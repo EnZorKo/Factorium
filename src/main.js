@@ -40,7 +40,7 @@ class App {
     this.bindMinimap();
     this.buildToolbar();
     this.refreshInv();
-    this.refreshTask(true);
+    this.refreshTask();
     this.lastSave = performance.now();
     this.acc = 0;
     this.last = performance.now();
@@ -91,7 +91,7 @@ class App {
     while (this.acc >= 1 / UPS && steps < 6) { this.game.step(); this.acc -= 1 / UPS; steps++; }
     if (steps === 6) this.acc = 0;
     const t1 = performance.now();
-    this.state.showRange = !!this.input.mineTile || (this.game.task < 1);
+    this.state.showRange = !!this.input.mineTile;
     this.renderer.draw(this.state, dt);
     const t2 = performance.now();
     const f = this.fps;
@@ -353,62 +353,35 @@ class App {
   }
 
   // ---------- Objetivos ----------
-  refreshTask(force = false) {
+  refreshTask() {
     const g = this.game;
     const task = TASKS[g.task];
     if (!task) {
-      $('taskNum').textContent = 'Fase 1 completada';
-      $('taskText').textContent = '¡Has montado tu primera fábrica en Veyra! Sigue ampliándola; la fase 2 traerá electricidad y nuevas máquinas.';
+      $('taskNum').textContent = 'Objetivos completados';
+      $('taskText').textContent = 'Has cumplido todos los objetivos de la fase 1.';
       $('taskBar').style.width = '100%';
       $('taskCount').textContent = '';
-      this.state.guide = null;
-      this.highlight(null);
       return;
     }
-    const [cur, goal] = task.goal(g.stats, g);
-    if (cur >= goal) {
+    const cur = g.stats.delivered[task.item] || 0;
+    if (cur >= task.n) {
       g.refund(task.reward);
       const rw = Object.entries(task.reward).map(([k, v]) => `${v} ${ITEMS[k].name}`).join(', ');
       this.toast(`✔ Objetivo cumplido${rw ? ' · Recompensa: ' + rw : ''}`);
       g.task++;
+      // el siguiente objetivo cuenta desde cero
+      g.stats.delivered = {};
       $('task').classList.remove('done'); void $('task').offsetWidth; $('task').classList.add('done');
       this.invDirty = true;
       if (!this.bench) saveLocal(g);
-      this.refreshTask(true);
+      this.refreshTask();
       return;
     }
     $('taskNum').textContent = `Objetivo ${g.task + 1} de ${TASKS.length}`;
-    if ($('taskText').textContent !== task.text) $('taskText').textContent = task.text;
-    $('taskBar').style.width = `${Math.min(100, (cur / goal) * 100)}%`;
-    $('taskCount').textContent = `${Math.min(cur, goal)} / ${goal}`;
-    // guía
-    const now = performance.now();
-    if (task.target && (force || !this._gt || now - this._gt > 800)) {
-      this._gt = now;
-      this.state.guide = this.nearestResource(task.target);
-    } else if (!task.target) this.state.guide = null;
-    this.highlight(task.milestone ? 'btnMilestones' : task.tool ? `tool-${task.tool}` : null);
-  }
-
-  highlight(id) {
-    if (this._hl === id) return;
-    document.querySelectorAll('.pulse').forEach((el) => el.classList.remove('pulse'));
-    this._hl = id;
-    if (!id) return;
-    const el = id.startsWith('tool-') ? document.querySelector(`.tool[data-id="${id.slice(5)}"]`) : $(id);
-    if (el) el.classList.add('pulse');
-  }
-
-  nearestResource(type) {
-    const w = this.game.world, d = this.game.drone;
-    let best = null, bd = Infinity;
-    for (let y = 0; y < w.h; y += 1) for (let x = 0; x < w.w; x += 1) {
-      const k = y * w.w + x;
-      if (w.resource[k] !== type || this.game.grid[k] >= 0) continue;
-      const dd = (x - d.x) ** 2 + (y - d.y) ** 2;
-      if (dd < bd) { bd = dd; best = { x, y }; }
-    }
-    return best;
+    const text = `Entrega ${task.n} ${ITEMS[task.item].name} en la Baliza`;
+    if (this._taskText !== text) this._taskText = text, $('taskText').innerHTML = `<img src="${this.itemImg[task.item]}" alt="" style="width:20px;height:20px;vertical-align:-4px"> ${text}`;
+    $('taskBar').style.width = `${Math.min(100, (cur / task.n) * 100)}%`;
+    $('taskCount').textContent = `${cur} / ${task.n}`;
   }
 
   // ---------- Textos de ayuda ----------
@@ -534,7 +507,6 @@ class App {
       b.onclick = () => { b.classList.remove('new'); this.moving = null; this.selectTool(this.state.tool === id ? null : id); };
       tb.appendChild(b);
     }
-    this._hl = undefined;
     this.syncButtons();
   }
 
@@ -597,7 +569,7 @@ class App {
         <p><b>Extraer a mano:</b> acércate a un recurso y mantén pulsado encima.</p>
         <p><b>Construir:</b> elige un edificio abajo y toca el mapa. Las máquinas sacan lo que producen por la flecha naranja: pon delante una cinta u otra máquina.</p>
         <p><b>La niebla</b> esconde lo que aún no has explorado. Los yacimientos se agotan: tendrás que buscar más.</p>
-        <p>Sigue los <b>objetivos</b> de arriba a la izquierda; la flecha verde te guía.</p>
+        <p><b>Objetivo:</b> arriba a la izquierda verás qué entregar en la Baliza. Cómo lo consigas es cosa tuya.</p>
       </div>
       <button class="btn primary" id="wGo" style="margin-top:10px;width:100%">¡A trabajar!</button>`);
     $('wGo').onclick = () => this.closePanel();
@@ -655,7 +627,7 @@ class App {
         this.setGame(new Game());
         this.buildToolbar();
         this.refreshInv();
-        this.refreshTask(true);
+        this.refreshTask();
         saveLocal(this.game);
         this.closePanel();
         this.openWelcome();

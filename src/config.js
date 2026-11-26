@@ -90,32 +90,18 @@ export const MILESTONES = [
     text: 'Electricidad, nuevas máquinas y biomas llegarán en la fase 2.' },
 ];
 
-// Tutorial: objetivos en orden. check(stats, game) -> [actual, meta].
+// Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [
-  { text: 'Vuela con el dron hasta la Ferrita (rocas rojas) y mantén pulsado encima para extraer.',
-    goal: (s) => [s.mined.ferrita || 0, 10], target: 1, reward: { ferrita: 10 } },
-  { text: 'Elige el Taladro (abajo) y colócalo sobre la Ferrita.',
-    goal: (s) => [s.built.taladro || 0, 1], target: 1, tool: 'taladro', reward: {} },
-  { text: 'Coloca un Horno justo donde apunta la flecha naranja del taladro.',
-    goal: (s) => [s.built.horno || 0, 1], tool: 'horno', reward: { ferrita: 12 } },
-  { text: 'Une la salida del horno con la Baliza usando Cintas (arrastra para trazar). Entrega lingotes.',
-    goal: (s) => [s.delivered.lingFerrico || 0, 10], tool: 'cinta', reward: { lingFerrico: 20 } },
-  { text: 'Busca Cobalina (cristales azules) y monta otra línea: taladro → horno → Baliza.',
-    goal: (s) => [s.delivered.lingCobalina || 0, 10], target: 2, reward: { lingCobalina: 15 } },
-  { text: 'Abre Hitos y completa «Reparto».',
-    goal: (s, g) => [g.milestone >= 1 ? 1 : 0, 1], milestone: true, reward: { lingFerrico: 20 } },
-  { text: 'Musgo ámbar (amarillo) + horno = Pastillas. Entrega pastillas en la Baliza.',
-    goal: (s) => [s.delivered.pastilla || 0, 10], target: 3, reward: { lingCobalina: 20 } },
-  { text: 'Completa el hito «Taller» para conseguir la Prensa.',
-    goal: (s, g) => [g.milestone >= 2 ? 1 : 0, 1], milestone: true, reward: {} },
-  { text: 'Coloca una Prensa, llévale lingotes y entrega Chapa en la Baliza.',
-    goal: (s) => [s.delivered.chapa || 0, 20], tool: 'prensa', reward: { lingFerrico: 40 } },
-  { text: 'Pon más prensas con recetas de Eje e Hilo conductor y entrega de ambos.',
-    goal: (s) => [Math.min(s.delivered.eje || 0, s.delivered.hilo || 0), 20], reward: { lingCobalina: 30 } },
-  { text: 'Completa el hito «Ensamblaje».',
-    goal: (s, g) => [g.milestone >= 3 ? 1 : 0, 1], milestone: true, reward: {} },
-  { text: 'Monta Ensambladoras y entrega Engranajes y Bobinas.',
-    goal: (s) => [Math.min(s.delivered.engranaje || 0, s.delivered.bobina || 0), 25], tool: 'ensambladora', reward: {} },
+  { item: 'lingFerrico',  n: 100, reward: { lingCobalina: 20 } },
+  { item: 'lingCobalina', n: 100, reward: { lingFerrico: 40 } },
+  { item: 'pastilla',     n: 50,  reward: { lingFerrico: 40 } },
+  { item: 'lingFerrico',  n: 300, reward: { lingCobalina: 40 } },
+  { item: 'lingCobalina', n: 300, reward: { lingFerrico: 80 } },
+  { item: 'chapa',        n: 200, reward: { lingFerrico: 80 } },
+  { item: 'eje',          n: 200, reward: { lingCobalina: 60 } },
+  { item: 'hilo',         n: 300, reward: { lingFerrico: 100 } },
+  { item: 'engranaje',    n: 100, reward: { chapa: 50 } },
+  { item: 'bobina',       n: 100, reward: {} },
 ];
 
 export const START_INVENTORY = { lingFerrico: 40, lingCobalina: 12, ferrita: 12 };
