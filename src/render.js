@@ -324,7 +324,7 @@ export class Renderer {
       // efectos de trabajo
       if (e.status === 'work' && Math.random() < dt * 6) {
         if (e.kind === 'furnace') this.puff(px + 14, py + 14, 'smoke');
-        else if (e.kind === 'miner') { this.dustColor = e.res === 2 ? '90,150,220' : e.res === 3 ? '220,170,70' : '170,95,70'; this.puff(px + s / 2, py + s / 2 - 6, 'dust'); }
+        else if (e.kind === 'miner') { this.dustColor = e.res === 2 ? '200,130,70' : e.res === 3 ? '40,40,44' : '170,95,70'; this.puff(px + s / 2, py + s / 2 - 6, 'dust'); }
         else if (e.kind === 'crafter') this.puff(px + s / 2, py + s / 2, 'spark');
       }
       if (detail) {
@@ -534,7 +534,7 @@ export class Renderer {
       const img = x.createImageData(w.w, w.h);
       const d = img.data;
       const cols = { 0: [70, 64, 58], 1: [98, 66, 52], 2: [48, 66, 68], 3: [18, 44, 60] };
-      const rc = { 1: [214, 96, 64], 2: [74, 158, 230], 3: [232, 177, 62] };
+      const rc = { 1: [192, 106, 80], 2: [208, 129, 63], 3: [20, 20, 24] };
       for (let i = 0; i < w.terrain.length; i++) {
         const o = i * 4;
         let c = w.explored[i] ? (w.resource[i] ? rc[w.resource[i]] : cols[w.terrain[i]]) : [12, 14, 17];

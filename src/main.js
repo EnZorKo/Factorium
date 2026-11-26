@@ -282,7 +282,7 @@ class App {
         h += e.inType ? this.slot(e.inType, e.inCount) : '<span class="slot">vacío</span>';
         h += '<span class="arrow">→</span>';
         h += e.outCount ? this.slot(e.outType, e.outCount) : '<span class="slot">—</span>';
-        h += '</div><div class="help">Ferrita → Lingote férrico · Cobalina → Lingote de cobalina · 3 Musgo → Pastilla</div>';
+        h += '</div><div class="help">Mineral de hierro → Lingote de hierro · Mineral de cobre → Lingote de cobre · 2 Carbón → Coque</div>';
         break;
       }
       case 'crafter': {

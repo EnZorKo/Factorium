@@ -5,10 +5,10 @@ Juego de automatización 2D con vista cenital, para navegador (PC y tablet). Est
 ## Estado: fase 1 (base)
 
 - Manejas un dron (WASD en PC, joystick en móvil) que explora el mapa. La niebla oculta lo que no has descubierto.
-- Mapa con biomas, lagos y yacimientos finitos de Ferrita, Cobalina y Musgo ámbar. Los más lejanos son más grandes y ricos.
+- Mapa con biomas, lagos y yacimientos finitos de hierro, cobre y carbón. Los más lejanos son más grandes y ricos.
 - Edificios: Cinta, Cinta Mk2, Taladro, Taladro Mk2, Horno, Prensa, Ensambladora, Caja, Divisor y la Baliza de aterrizaje.
-- 11 objetos y recetas encadenadas: mineral → lingote → chapa, eje e hilo → engranaje y bobina.
-- 10 objetivos de entrega en la Baliza (por ejemplo, 300 Lingote de cobalina), con recompensa, y 4 hitos que desbloquean edificios.
+- 14 objetos y recetas encadenadas: mineral → lingote → placa, varilla y cable → engranaje, bobina y bastidor → actuador → unidad de tracción.
+- 8 objetivos de entrega de piezas elaboradas en grandes cantidades (por ejemplo, 800 Actuadores), con recompensa, y 4 hitos que desbloquean edificios.
 - Máquinas con luz de estado, humo, chispas y panel al tocarlas (receta, contenido, girar, mover y quitar).
 - Minimapa, autoguardado cada 30 s y al cerrar, y exportar/importar partida.
 

@@ -159,6 +159,32 @@ function itemIcon(id, size = 32) {
     x.beginPath(); x.arc(16, 16, 8.5, 0, 7); x.fill();
     x.fillStyle = it.dark;
     x.beginPath(); x.arc(16, 16, 3.5, 0, 7); x.fill();
+  } else if (it.shape === 'frame') {
+    x.strokeStyle = it.dark; x.lineWidth = 5;
+    x.strokeRect(6, 6, 20, 20);
+    x.shadowColor = 'transparent';
+    x.strokeStyle = it.color; x.lineWidth = 3;
+    x.strokeRect(6, 6, 20, 20);
+    x.beginPath(); x.moveTo(6, 6); x.lineTo(26, 26); x.moveTo(26, 6); x.lineTo(6, 26); x.stroke();
+    x.fillStyle = '#2b2e31';
+    for (const [a, b] of [[6, 6], [26, 6], [6, 26], [26, 26]]) { x.beginPath(); x.arc(a, b, 2.2, 0, 7); x.fill(); }
+  } else if (it.shape === 'actuator') {
+    x.fillStyle = it.dark;
+    x.beginPath(); x.roundRect(4, 10, 18, 13, 3); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#8c9197'; x.fillRect(20, 14, 9, 5);
+    x.fillStyle = it.color; x.fillRect(6, 12, 14, 3);
+    x.fillStyle = '#c3c7cc';
+    x.beginPath(); x.arc(13, 19, 3, 0, 7); x.fill();
+  } else if (it.shape === 'drive') {
+    x.fillStyle = it.dark;
+    x.beginPath(); x.roundRect(4, 7, 24, 18, 4); x.fill();
+    x.shadowColor = 'transparent';
+    for (const cx of [10, 22]) {
+      x.fillStyle = '#5a5e63'; x.beginPath(); x.arc(cx, 16, 6, 0, 7); x.fill();
+      x.fillStyle = '#9aa0a7'; x.beginPath(); x.arc(cx, 16, 2.5, 0, 7); x.fill();
+    }
+    x.fillStyle = it.color; x.fillRect(6, 8, 20, 2.5);
   } else if (it.shape === 'coil') {
     x.fillStyle = it.dark;
     x.fillRect(7, 8, 18, 16);
@@ -481,19 +507,26 @@ function resourceTile(type, variant) {
   const r = (i) => hash2(variant, i, type * 17);
   x.shadowColor = 'rgba(0,0,0,0.5)';
   x.shadowOffsetY = 3; x.shadowBlur = 3;
-  if (type === 2) {
-    // cobalina: esquirlas de cristal azul que brillan
+  if (type === 2 || type === 3) {
+    // cobre: rocas anaranjadas con pátina verde · carbón: trozos negros brillantes
+    const base = type === 2 ? ['#5a3420', '#b8693a', '#e0a070'] : ['#0e0e10', '#26262a', '#5a5a62'];
     const n = 3 + Math.floor(r(0) * 3);
     for (let i = 0; i < n; i++) {
-      const cx = 12 + r(i + 1) * 40, cy = 18 + r(i + 11) * 38, hgt = 12 + r(i + 21) * 14, wd = 5 + r(i + 41) * 4;
-      const lean = (r(i + 51) - 0.5) * 8;
-      x.fillStyle = '#163a63';
-      x.beginPath(); x.moveTo(cx - wd, cy); x.lineTo(cx + lean, cy - hgt); x.lineTo(cx + wd, cy); x.lineTo(cx, cy + 4); x.closePath(); x.fill();
+      const cx = 10 + r(i + 1) * 44, cy = 10 + r(i + 11) * 44, sz = 7 + r(i + 21) * 8;
+      x.fillStyle = base[0];
+      x.beginPath();
+      for (let k = 0; k < 7; k++) {
+        const a = (k / 7) * Math.PI * 2 + r(i + 31);
+        const rr = sz * (0.7 + r(i * 7 + k) * 0.45);
+        k ? x.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr) : x.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      }
+      x.closePath(); x.fill();
       x.shadowColor = 'transparent';
-      x.fillStyle = '#3d86cf';
-      x.beginPath(); x.moveTo(cx - wd + 1, cy - 1); x.lineTo(cx + lean, cy - hgt + 2); x.lineTo(cx, cy + 2); x.closePath(); x.fill();
-      x.fillStyle = '#9fd8ff';
-      x.beginPath(); x.moveTo(cx - 1, cy - 3); x.lineTo(cx + lean * 0.9, cy - hgt + 4); x.lineTo(cx + 1.5, cy - 4); x.closePath(); x.fill();
+      x.fillStyle = base[1];
+      x.beginPath(); x.arc(cx - sz * 0.15, cy - sz * 0.2, sz * 0.55, 0, 7); x.fill();
+      if (type === 2) { x.fillStyle = '#4fa58a'; x.beginPath(); x.arc(cx + sz * 0.3, cy + sz * 0.2, sz * 0.28, 0, 7); x.fill(); }
+      x.fillStyle = base[2];
+      x.beginPath(); x.arc(cx - sz * 0.3, cy - sz * 0.35, sz * 0.18, 0, 7); x.fill();
       x.shadowColor = 'rgba(0,0,0,0.5)';
     }
   } else if (type === 1) {
@@ -516,7 +549,7 @@ function resourceTile(type, variant) {
       x.beginPath(); x.moveTo(cx - s * 0.3, cy - s * 0.25); x.lineTo(cx - s * 0.05, cy - s * 0.55); x.lineTo(cx + s * 0.15, cy - s * 0.3); x.closePath(); x.fill();
       x.shadowColor = 'rgba(0,0,0,0.5)';
     }
-  } else if (type === 3) {
+  } else if (type === 99) {
     const n = 4 + Math.floor(r(0) * 4);
     for (let i = 0; i < n; i++) {
       const cx = 8 + r(i + 1) * 48, cy = 8 + r(i + 11) * 48, s = 5 + r(i + 21) * 6;

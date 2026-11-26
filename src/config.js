@@ -10,32 +10,35 @@ export const MINE_RANGE = 6; // distancia máxima para extraer a mano
 
 // Objetos. color = color del icono, shape = forma del icono.
 export const ITEMS = {
-  ferrita:      { name: 'Ferrita',             color: '#c45a40', dark: '#6e2a1c', shape: 'ore' },
-  cobalina:     { name: 'Cobalina',            color: '#3f8fd6', dark: '#1d4a7a', shape: 'ore' },
-  musgo:        { name: 'Musgo ámbar',         color: '#e0a83a', dark: '#8a5a14', shape: 'moss' },
-  lingFerrico:  { name: 'Lingote férrico',     color: '#b4b8be', dark: '#5b6067', shape: 'ingot' },
-  lingCobalina: { name: 'Lingote de cobalina', color: '#5fb6f0', dark: '#2a6596', shape: 'ingot' },
-  pastilla:     { name: 'Pastilla de musgo',   color: '#f2c15a', dark: '#94661b', shape: 'pellet' },
-  chapa:        { name: 'Chapa',               color: '#9ea4ab', dark: '#4d5258', shape: 'plate' },
-  eje:          { name: 'Eje',                 color: '#c3c7cc', dark: '#5f646a', shape: 'rod' },
-  hilo:         { name: 'Hilo conductor',      color: '#4fb3e8', dark: '#1f5a80', shape: 'wire' },
+  ferrita:      { name: 'Mineral de hierro',   color: '#b0624a', dark: '#5e2c20', shape: 'ore' },
+  cobalina:     { name: 'Mineral de cobre',    color: '#d0813f', dark: '#3d7a62', shape: 'ore' },
+  musgo:        { name: 'Carbón',              color: '#3a3a3e', dark: '#141416', shape: 'ore' },
+  lingFerrico:  { name: 'Lingote de hierro',     color: '#b4b8be', dark: '#5b6067', shape: 'ingot' },
+  lingCobalina: { name: 'Lingote de cobre',    color: '#e0884a', dark: '#8a4a22', shape: 'ingot' },
+  pastilla:     { name: 'Coque',               color: '#5a5a60', dark: '#1e1e22', shape: 'pellet' },
+  chapa:        { name: 'Placa de hierro',   color: '#9ea4ab', dark: '#4d5258', shape: 'plate' },
+  eje:          { name: 'Varilla de hierro', color: '#c3c7cc', dark: '#5f646a', shape: 'rod' },
+  hilo:         { name: 'Cable de cobre',      color: '#e0884a', dark: '#8a4a22', shape: 'wire' },
   engranaje:    { name: 'Engranaje',           color: '#b7bcc2', dark: '#55595f', shape: 'gear' },
   bobina:       { name: 'Bobina',              color: '#3fa0d8', dark: '#3a3d42', shape: 'coil' },
+  bastidor:     { name: 'Bastidor',            color: '#8f969d', dark: '#3f4349', shape: 'frame' },
+  actuador:     { name: 'Actuador',            color: '#e08a3c', dark: '#4a4e53', shape: 'actuator' },
+  traccion:     { name: 'Unidad de tracción',  color: '#4fd1bd', dark: '#2b2e31', shape: 'drive' },
 };
 export const ITEM_IDS = Object.keys(ITEMS);
 
 // Recursos del terreno -> objeto que se extrae.
 export const RESOURCES = {
-  1: { item: 'ferrita',  name: 'Ferrita',     color: '#d0603f' },
-  2: { item: 'cobalina', name: 'Cobalina',    color: '#4a9ee6' },
-  3: { item: 'musgo',    name: 'Musgo ámbar', color: '#e8b13e' },
+  1: { item: 'ferrita',  name: 'Hierro', color: '#c06a50' },
+  2: { item: 'cobalina', name: 'Cobre',  color: '#d0813f' },
+  3: { item: 'musgo',    name: 'Carbón', color: '#2a2a2e' },
 };
 
 // Recetas de horno (se eligen solas según lo que entra).
 export const FURNACE_RECIPES = {
   ferrita:  { out: 'lingFerrico',  inCount: 1, time: 1.6 },
   cobalina: { out: 'lingCobalina', inCount: 1, time: 1.6 },
-  musgo:    { out: 'pastilla',     inCount: 3, time: 2.0 },
+  musgo:    { out: 'pastilla',     inCount: 2, time: 2.0 },
 };
 
 // Recetas de fábrica (se eligen tocando la máquina).
@@ -45,6 +48,9 @@ export const RECIPES = {
   hilo:      { machine: 'prensa',       in: { lingCobalina: 1 },         out: 'hilo',      n: 2, time: 1.0 },
   engranaje: { machine: 'ensambladora', in: { chapa: 2, eje: 1 },        out: 'engranaje', n: 1, time: 3.0 },
   bobina:    { machine: 'ensambladora', in: { hilo: 3, eje: 1 },         out: 'bobina',    n: 1, time: 3.0 },
+  bastidor:  { machine: 'ensambladora', in: { chapa: 4, eje: 6 },        out: 'bastidor',  n: 1, time: 5.0 },
+  actuador:  { machine: 'ensambladora', in: { engranaje: 2, bobina: 2 }, out: 'actuador',  n: 1, time: 6.0 },
+  traccion:  { machine: 'ensambladora', in: { bastidor: 1, actuador: 2, hilo: 10 }, out: 'traccion', n: 1, time: 12.0 },
 };
 
 // Edificios. size en casillas; cost en objetos del inventario.
@@ -65,7 +71,7 @@ export const BUILDINGS = {
   prensa:       { name: 'Prensa',       kind: 'crafter',  size: 2, cost: { lingFerrico: 20, lingCobalina: 10 }, key: '7', defaultRecipe: 'chapa',
                   desc: 'Convierte lingotes en piezas. Tócala para elegir receta.' },
   ensambladora: { name: 'Ensambladora', kind: 'crafter',  size: 3, cost: { chapa: 20, eje: 20, hilo: 20 }, key: '8', defaultRecipe: 'engranaje',
-                  desc: 'Une dos piezas en una más compleja. Tócala para elegir receta.' },
+                  desc: 'Une varias piezas en una más compleja. Tócala para elegir receta.' },
   taladro2:     { name: 'Taladro Mk2',  kind: 'miner',    size: 2, rate: 1.0, cost: { lingFerrico: 10, lingCobalina: 8, pastilla: 4 }, key: '9', upgradeOf: 'taladro',
                   desc: 'Extrae el doble de rápido. Ponlo encima de un taladro para mejorarlo.' },
   baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, cost: {}, hidden: true,
@@ -82,26 +88,24 @@ export const MILESTONES = [
     text: 'Divisores para repartir y cintas el doble de rápidas.' },
   { id: 'taller', name: 'Taller', cost: { lingFerrico: 100, lingCobalina: 50, pastilla: 10 },
     unlocks: ['prensa'],
-    text: 'La Prensa convierte lingotes en Chapa, Eje e Hilo conductor.' },
+    text: 'La Prensa convierte lingotes en Placas, Varillas y Cable de cobre.' },
   { id: 'ensamblaje', name: 'Ensamblaje', cost: { chapa: 60, eje: 60, hilo: 60 },
     unlocks: ['ensambladora', 'taladro2'],
-    text: 'La Ensambladora une piezas: Engranajes y Bobinas. Y taladros más rápidos.' },
+    text: 'La Ensambladora une piezas: Engranaje, Bobina, Bastidor, Actuador y Unidad de tracción. Y taladros más rápidos.' },
   { id: 'chispa', name: 'Primera chispa', cost: null, unlocks: [],
     text: 'Electricidad, nuevas máquinas y biomas llegarán en la fase 2.' },
 ];
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [
-  { item: 'lingFerrico',  n: 100, reward: { lingCobalina: 20 } },
-  { item: 'lingCobalina', n: 100, reward: { lingFerrico: 40 } },
-  { item: 'pastilla',     n: 50,  reward: { lingFerrico: 40 } },
-  { item: 'lingFerrico',  n: 300, reward: { lingCobalina: 40 } },
-  { item: 'lingCobalina', n: 300, reward: { lingFerrico: 80 } },
-  { item: 'chapa',        n: 200, reward: { lingFerrico: 80 } },
-  { item: 'eje',          n: 200, reward: { lingCobalina: 60 } },
-  { item: 'hilo',         n: 300, reward: { lingFerrico: 100 } },
-  { item: 'engranaje',    n: 100, reward: { chapa: 50 } },
-  { item: 'bobina',       n: 100, reward: {} },
+  { item: 'chapa',     n: 150, reward: { lingCobalina: 40 } },
+  { item: 'engranaje', n: 200, reward: { lingFerrico: 150 } },
+  { item: 'bobina',    n: 200, reward: { lingFerrico: 150 } },
+  { item: 'bastidor',  n: 150, reward: { lingCobalina: 150 } },
+  { item: 'actuador',  n: 250, reward: { chapa: 200 } },
+  { item: 'traccion',  n: 100, reward: { eje: 300 } },
+  { item: 'actuador',  n: 800, reward: { hilo: 500 } },
+  { item: 'traccion',  n: 400, reward: {} },
 ];
 
 export const START_INVENTORY = { lingFerrico: 40, lingCobalina: 12, ferrita: 12 };
