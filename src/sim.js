@@ -1,6 +1,6 @@
 // Simulación: edificios, cintas, flujo de objetos, yacimientos y progreso.
-import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R } from './config.js';
-import { World } from './world.js';
+import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R, FUEL, PUMP_BOILERS, BOILER_GENS } from './config.js';
+import { World, T_WATER } from './world.js';
 
 export const DX = [1, 0, -1, 0];
 export const DY = [0, 1, 0, -1];
@@ -28,6 +28,9 @@ export class Game {
     this.task = 0;
     this.depleted = new Set(); // casillas cuya cantidad cambió (para guardar)
     this.listeners = new Set();
+    this.nets = [];
+    this.wires = [];
+    this.powerDirty = true;
     const s = this.world.spawn;
     this.drone = { x: s.x + 1.5, y: s.y + 4.5, vx: 0, vy: 0, angle: 0 };
     this.world.reveal(this.drone.x, this.drone.y, REVEAL_R + 4);
@@ -35,7 +38,10 @@ export class Game {
   }
 
   on(fn) { this.listeners.add(fn); }
-  emit(type, data) { for (const fn of this.listeners) fn(type, data); }
+  emit(type, data) {
+    if (type === 'changed') this.powerDirty = true;
+    for (const fn of this.listeners) fn(type, data);
+  }
 
   entityAt(x, y) {
     if (!this.world.inside(x, y)) return null;
@@ -75,6 +81,15 @@ export class Game {
       }
     }
     if (def.kind === 'miner' && !this.minerTiles(x, y, s).length) return { ok: false, reason: 'El taladro va encima de un recurso' };
+    if (def.kind === 'pump') {
+      const w = this.world;
+      let wet = false;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + DX[d], ny = y + DY[d];
+        if (w.inside(nx, ny) && w.terrain[w.idx(nx, ny)] === T_WATER) wet = true;
+      }
+      if (!wet) return { ok: false, reason: 'La bomba tiene que tocar el agua' };
+    }
     if (!free && !(replace && replace.type === type)) {
       const cost = replace ? diffCost(def.cost, BUILDINGS[replace.type].cost) : def.cost;
       if (!this.canAfford(cost)) return { ok: false, reason: 'Faltan materiales: ' + missing(this, cost) };
@@ -150,6 +165,7 @@ export class Game {
       e.outCount = 0; e.progress = 0;
     }
     if ((e.kind === 'miner' || e.kind === 'splitter') && e.buf) { inv[e.buf]++; e.buf = null; }
+    if (e.kind === 'boiler' && e.fuelType) { inv[e.fuelType] += e.fuel; e.fuel = 0; }
   }
 
   remove(e) {
@@ -254,6 +270,142 @@ export class Game {
     this.orderDirty = false;
   }
 
+  // ---------- Energía ----------
+
+  // Recalcula redes eléctricas (postes + Baliza) y de agua (bombas, tuberías, calderas).
+  rebuildPower() {
+    const w = this.world;
+    const poles = this.machines.filter((e) => e.kind === 'pole' || e.kind === 'hub');
+    const parent = poles.map((_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    const cx = (e) => e.x + e.size / 2, cy = (e) => e.y + e.size / 2;
+    this.wires = [];
+    // rejilla de cubos para buscar postes cercanos
+    const B = 10, buckets = new Map();
+    poles.forEach((p, i) => {
+      const k = ((cx(p) / B) | 0) * 1000 + ((cy(p) / B) | 0);
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(i);
+    });
+    poles.forEach((p, i) => {
+      const bx = (cx(p) / B) | 0, by = (cy(p) / B) | 0;
+      const near = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        for (const j of buckets.get((bx + dx) * 1000 + by + dy) || []) {
+          if (j <= i) continue;
+          const q = poles[j];
+          const d = Math.hypot(cx(p) - cx(q), cy(p) - cy(q));
+          if (d <= Math.min(p.def.wire, q.def.wire)) near.push([d, j]);
+        }
+      }
+      near.sort((a, b) => a[0] - b[0]);
+      near.forEach(([, j], n) => {
+        parent[find(i)] = find(j);
+        if (n < 3) this.wires.push([p, poles[j]]);
+      });
+    });
+    const nets = new Map();
+    const cover = new Int32Array(w.w * w.h).fill(-1);
+    poles.forEach((p, i) => {
+      const root = find(i);
+      if (!nets.has(root)) nets.set(root, { id: nets.size, cap: 0, demand: 0, ratio: 0, load: 0, gens: [], hub: false, users: 0 });
+      const net = nets.get(root);
+      p.net = net;
+      if (p.kind === 'hub') net.hub = true;
+      const r = p.def.supply;
+      for (let y = p.y - r; y < p.y + p.size + r; y++) for (let x = p.x - r; x < p.x + p.size + r; x++) {
+        if (w.inside(x, y)) cover[y * w.w + x] = root;
+      }
+    });
+    const list = [...nets.values()];
+    for (const e of this.machines) {
+      if (e.kind === 'pole' || e.kind === 'hub') continue;
+      e.net = null;
+      if (!e.def.power && e.kind !== 'generator') continue;
+      outer: for (let j = 0; j < e.size; j++) for (let i = 0; i < e.size; i++) {
+        const root = cover[(e.y + j) * w.w + e.x + i];
+        if (root >= 0) { e.net = nets.get(root); break outer; }
+      }
+      if (e.kind === 'generator' && e.net) e.net.gens.push(e);
+      if (e.def.power && e.net) e.net.users++;
+    }
+    this.nets = list;
+    this.rebuildWater();
+    this.powerDirty = false;
+  }
+
+  rebuildWater() {
+    const fluid = new Set(['pipe', 'pump', 'boiler']);
+    const seen = new Set();
+    for (const e of this.machines) {
+      if (e.kind === 'boiler') { e.water = 0; e.gens = []; }
+    }
+    for (const start of this.machines) {
+      if (!fluid.has(start.kind) || seen.has(start)) continue;
+      const comp = [];
+      const stack = [start];
+      seen.add(start);
+      while (stack.length) {
+        const e = stack.pop();
+        comp.push(e);
+        for (const [nx, ny] of this.neighbors(e)) {
+          const n = this.entityAt(nx, ny);
+          if (n && fluid.has(n.kind) && !seen.has(n)) { seen.add(n); stack.push(n); }
+        }
+      }
+      const pumps = comp.filter((e) => e.kind === 'pump').length;
+      const boilers = comp.filter((e) => e.kind === 'boiler');
+      const ratio = boilers.length ? Math.min(1, (pumps * PUMP_BOILERS) / boilers.length) : 0;
+      for (const b of boilers) b.water = ratio;
+    }
+    // generadores: cada uno toma vapor de una caldera que lo toque
+    for (const e of this.machines) {
+      if (e.kind !== 'generator') continue;
+      e.boiler = null;
+      for (const [nx, ny] of this.neighbors(e)) {
+        const n = this.entityAt(nx, ny);
+        if (n && n.kind === 'boiler' && n.gens.length < BOILER_GENS) { n.gens.push(e); e.boiler = n; break; }
+      }
+    }
+  }
+
+  // casillas que rodean a una entidad (sin esquinas)
+  neighbors(e) {
+    const out = [];
+    for (let i = 0; i < e.size; i++) {
+      out.push([e.x + i, e.y - 1], [e.x + i, e.y + e.size], [e.x - 1, e.y + i], [e.x + e.size, e.y + i]);
+    }
+    return out;
+  }
+
+  computePower() {
+    for (const net of this.nets) {
+      let cap = net.hub ? BUILDINGS.baliza.output : 0;
+      for (const gen of net.gens) {
+        const b = gen.boiler;
+        gen.avail = b && b.water > 0 && (b.energy > 0 || b.fuel > 0) ? gen.def.output * b.water : 0;
+        cap += gen.avail;
+      }
+      net.cap = cap;
+      net.ratio = net.demand > 0 ? Math.min(1, cap / net.demand) : 1;
+      net.load = cap > 0 ? Math.min(1, net.demand / cap) : 0;
+      net.used = Math.min(cap, net.demand);
+      net.lastDemand = net.demand;
+      net.demand = 0;
+      // gastar combustible
+      for (const gen of net.gens) {
+        const b = gen.boiler;
+        const kw = (gen.avail || 0) * net.load;
+        gen.status = kw > 0 ? 'work' : 'idle';
+        if (!b || kw <= 0) continue;
+        b.energy -= kw / UPS;
+        b.burning = 30;
+        while (b.energy <= 0 && b.fuel > 0) { b.fuel--; b.energy += FUEL[b.fuelType]; if (!b.fuel) b.lastFuel = b.fuelType; }
+        if (b.energy < 0) b.energy = 0;
+      }
+    }
+  }
+
   // ---------- Paso de simulación ----------
 
   step() {
@@ -283,6 +435,8 @@ export class Game {
         }
       }
     }
+    if (this.powerDirty) this.rebuildPower();
+    this.computePower();
     const ms = this.machines;
     for (let k = 0; k < ms.length; k++) updateMachine(this, ms[k]);
     this.tick++;
@@ -299,6 +453,7 @@ export class Game {
       else if (e.kind === 'chest') rec.push(e.store);
       else if (e.kind === 'furnace') rec.push([e.inType, e.inCount, e.outType, e.outCount, e.progress]);
       else if (e.kind === 'crafter') rec.push([e.recipe, e.inb, e.outCount, e.progress]);
+      else if (e.kind === 'boiler') rec.push([e.fuelType, e.fuel, e.energy]);
       else if (e.kind === 'miner' || e.kind === 'splitter') rec.push(e.buf);
       ents.push(rec);
     }
@@ -334,6 +489,7 @@ export class Game {
       else if (e.kind === 'chest') { e.store = extra; e.total = Object.values(extra).reduce((a, b) => a + b, 0); }
       else if (e.kind === 'furnace') [e.inType, e.inCount, e.outType, e.outCount, e.progress] = extra;
       else if (e.kind === 'crafter') { g.setRecipe(e, extra[0]); Object.assign(e.inb, extra[1]); e.outCount = extra[2]; e.progress = extra[3]; }
+      else if (e.kind === 'boiler') [e.fuelType, e.fuel, e.energy] = extra;
       else e.buf = extra;
     }
     g.inv = Object.fromEntries(ITEM_IDS.map((id) => [id, data.inv[id] || 0]));
@@ -393,6 +549,8 @@ function initEntity(e, g) {
       break;
     case 'chest': e.store = {}; e.total = 0; break;
     case 'splitter': e.buf = null; e.rr = 0; break;
+    case 'boiler': e.fuelType = null; e.fuel = 0; e.energy = 0; e.water = 0; e.gens = []; e.burning = 0; break;
+    case 'generator': e.boiler = null; e.avail = 0; break;
     case 'hub': break;
   }
 }
@@ -432,6 +590,13 @@ function accept(g, e, item, travel) {
       e.inb[item]++;
       return true;
     }
+    case 'boiler': {
+      if (!FUEL[item]) return false;
+      if (e.fuelType && e.fuelType !== item && e.fuel > 0) return false;
+      if (e.fuel >= 20) return false;
+      e.fuelType = item; e.fuel++;
+      return true;
+    }
     case 'chest': {
       if (e.total >= e.def.capacity) return false;
       e.store[item] = (e.store[item] || 0) + 1; e.total++;
@@ -452,15 +617,30 @@ function accept(g, e, item, travel) {
   }
 }
 
+// Factor de energía de la máquina: 1 = a tope, 0 = sin energía. Anota la demanda.
+function powerFactor(e) {
+  if (!e.def.power) return 1;
+  const net = e.net;
+  if (!net) return 0;
+  net.demand += e.def.power;
+  return net.ratio;
+}
+
 function updateMachine(g, e) {
   switch (e.kind) {
+    case 'boiler': {
+      if (e.burning > 0) e.burning--;
+      e.status = e.water <= 0 ? 'nowater' : (e.fuel > 0 || e.energy > 0) ? (e.burning > 0 ? 'work' : 'idle') : 'nofuel';
+      break;
+    }
     case 'miner': {
       if (!e.buf) {
         let tiles = e.tiles;
         if (tiles.length && g.world.amount[tiles[e.rr % tiles.length]] === 0) tiles = e.tiles = tiles.filter((k) => g.world.amount[k] > 0);
         if (!tiles.length) { e.status = 'empty'; break; }
-        e.status = 'work';
-        e.progress += e.def.rate / UPS;
+        const f = powerFactor(e);
+        e.status = f > 0 ? 'work' : 'nopower';
+        e.progress += (e.def.rate * f) / UPS;
         if (e.progress >= 1) {
           e.progress -= 1;
           e.rr = (e.rr + 1) % tiles.length;
@@ -480,8 +660,9 @@ function updateMachine(g, e) {
       if (r && e.inCount >= r.inCount) {
         if (e.outCount >= OUT_BUF || (e.outType && e.outType !== r.out && e.outCount > 0)) e.status = 'full';
         else {
-          e.status = 'work';
-          e.progress += 1 / (r.time * UPS);
+          const f = powerFactor(e);
+          e.status = f > 0 ? 'work' : 'nopower';
+          e.progress += f / (r.time * UPS);
           if (e.progress >= 1) {
             e.progress = 0;
             e.inCount -= r.inCount;
@@ -493,7 +674,7 @@ function updateMachine(g, e) {
       if (e.outCount > 0) {
         const [tx, ty] = g.outputTile(e);
         if (g.pushTo(tx, ty, e.outType, e.dir)) e.outCount--;
-        else if (e.status !== 'work') e.status = 'full';
+        else if (e.status !== 'work' && e.status !== 'nopower') e.status = 'full';
       }
       break;
     }
@@ -506,16 +687,17 @@ function updateMachine(g, e) {
       if (ready || e.progress > 0) {
         if (e.outCount >= OUT_BUF) e.status = 'full';
         else {
-          if (e.progress === 0) for (const k in r.in) e.inb[k] -= r.in[k];
-          e.status = 'work';
-          e.progress += 1 / (r.time * UPS);
+          const f = powerFactor(e);
+          if (f > 0 && e.progress === 0) { for (const k in r.in) e.inb[k] -= r.in[k]; e.progress = 1e-9; }
+          e.status = f > 0 ? 'work' : 'nopower';
+          if (e.progress > 0) e.progress += f / (r.time * UPS);
           if (e.progress >= 1) { e.progress = 0; e.outCount += r.n; }
         }
       }
       if (e.outCount > 0) {
         const [tx, ty] = g.outputTile(e);
         if (g.pushTo(tx, ty, r.out, e.dir)) e.outCount--;
-        else if (e.status !== 'work') e.status = 'full';
+        else if (e.status !== 'work' && e.status !== 'nopower') e.status = 'full';
       }
       break;
     }

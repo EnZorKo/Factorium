@@ -315,15 +315,35 @@ export class Renderer {
     }
     // edificios
     const now = performance.now() / 1000;
+    // tuberías primero (por debajo)
+    for (const e of big) if (e.kind === 'pipe') this.drawPipe(e);
+    // zonas de energía al colocar algo eléctrico
+    const tdef = state.tool && BUILDINGS[state.tool];
+    const sel0 = state.selected;
+    if ((tdef && (tdef.power || tdef.kind === 'pole' || tdef.kind === 'generator')) || (sel0 && (sel0.kind === 'pole' || sel0.def.power))) {
+      ctx.fillStyle = 'rgba(90,160,255,0.10)';
+      ctx.strokeStyle = 'rgba(90,160,255,0.35)';
+      ctx.lineWidth = 1 / cam.z;
+      for (const e of game.machines) {
+        if (e.kind !== 'pole' && e.kind !== 'hub') continue;
+        const r = e.def.supply;
+        const ax = (e.x - r) * TILE, ay = (e.y - r) * TILE, sz = (e.size + 2 * r) * TILE;
+        if (ax > (x1 + 1) * TILE || ay > (y1 + 1) * TILE || ax + sz < x0 * TILE || ay + sz < y0 * TILE) continue;
+        ctx.fillRect(ax, ay, sz, sz);
+        ctx.strokeRect(ax, ay, sz, sz);
+      }
+    }
     for (const e of big) {
+      if (e.kind === 'pipe') continue;
       const s = e.size * TILE;
       const px = e.x * TILE, py = e.y * TILE;
+      if (e.kind === 'pole') { ctx.drawImage(this.sp.pole, px, py, s, s); continue; }
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(px + 5, py + 7, s - 4, s - 4);
       ctx.drawImage(this.buildingSprite(e, t), px, py, s, s);
       // efectos de trabajo
       if (e.status === 'work' && Math.random() < dt * 6) {
-        if (e.kind === 'furnace') this.puff(px + 14, py + 14, 'smoke');
+        if (e.kind === 'furnace' || e.kind === 'boiler') this.puff(px + 14, py + 14, 'smoke');
         else if (e.kind === 'miner') { this.dustColor = e.res === 2 ? '200,130,70' : e.res === 3 ? '40,40,44' : '170,95,70'; this.puff(px + s / 2, py + s / 2 - 6, 'dust'); }
         else if (e.kind === 'crafter') this.puff(px + s / 2, py + s / 2, 'spark');
       }
@@ -339,9 +359,18 @@ export class Renderer {
           ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
         }
         // luz de estado
-        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter') {
-          const col = e.status === 'work' ? '#5fe08a' : e.status === 'full' ? '#ff5a4a' : e.status === 'empty' ? '#8a8f95' : '#f2c14a';
-          const blink = e.status === 'full' || e.status === 'empty' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator') {
+          const st = e.status;
+          const col = st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
+          const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
+          if (st === 'nopower') {
+            ctx.globalAlpha = blink;
+            ctx.fillStyle = 'rgba(15,17,19,0.8)';
+            ctx.beginPath(); ctx.arc(px + s / 2, py + s / 2, 11, 0, 7); ctx.fill();
+            ctx.fillStyle = '#ffd54a';
+            const bx = px + s / 2, by = py + s / 2;
+            ctx.beginPath(); ctx.moveTo(bx + 2, by - 8); ctx.lineTo(bx - 5, by + 1); ctx.lineTo(bx, by + 1); ctx.lineTo(bx - 2, by + 8); ctx.lineTo(bx + 5, by - 1); ctx.lineTo(bx, by - 1); ctx.closePath(); ctx.fill();
+          }
           ctx.globalAlpha = blink;
           ctx.fillStyle = '#111';
           ctx.beginPath(); ctx.arc(px + 9, py + s - 9, 5.5, 0, 7); ctx.fill();
@@ -350,12 +379,24 @@ export class Renderer {
           ctx.globalAlpha = 1;
         }
       }
-      if (e.kind !== 'hub' && e.kind !== 'chest' && e.kind !== 'splitter' && (state.tool || cam.z >= 0.9)) {
+      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
         this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
       }
     }
     this.stats = { belts: beltCount, big: big.length };
+
+    // cables entre postes
+    ctx.lineWidth = 1.6;
+    for (const [a, b] of game.wires) {
+      const ax = (a.x + a.size / 2) * TILE, ay = (a.y + a.size / 2) * TILE;
+      const bx = (b.x + b.size / 2) * TILE, by = (b.y + b.size / 2) * TILE;
+      if (Math.max(ax, bx) < x0 * TILE || Math.min(ax, bx) > (x1 + 1) * TILE || Math.max(ay, by) < y0 * TILE || Math.min(ay, by) > (y1 + 1) * TILE) continue;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.moveTo(ax + 4, ay + 6); ctx.quadraticCurveTo((ax + bx) / 2 + 4, (ay + by) / 2 + 14, bx + 4, by + 6); ctx.stroke();
+      ctx.strokeStyle = '#b8743a';
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + 8, bx, by); ctx.stroke();
+    }
 
     // partículas
     ctx.globalCompositeOperation = 'source-over';
@@ -468,6 +509,28 @@ export class Renderer {
     }
   }
 
+  drawPipe(e) {
+    const { ctx, game } = this;
+    const px = e.x * TILE, py = e.y * TILE, c = TILE / 2;
+    const fluid = ['pipe', 'pump', 'boiler'];
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.arc(px + c + 3, py + c + 4, 8, 0, 7); ctx.fill();
+    for (let d = 0; d < 4; d++) {
+      const n = game.entityAt(e.x + DX[d], e.y + DY[d]);
+      if (!n || !fluid.includes(n.kind)) continue;
+      ctx.save();
+      ctx.translate(px + c, py + c);
+      ctx.rotate((d * Math.PI) / 2);
+      ctx.fillStyle = '#4d5257'; ctx.fillRect(0, -6, c + 1, 12);
+      ctx.fillStyle = '#8c9197'; ctx.fillRect(0, -4, c + 1, 3);
+      ctx.restore();
+    }
+    ctx.fillStyle = '#5a5e63';
+    ctx.beginPath(); ctx.arc(px + c, py + c, 8, 0, 7); ctx.fill();
+    ctx.fillStyle = '#9aa0a7';
+    ctx.beginPath(); ctx.arc(px + c - 2, py + c - 2, 3, 0, 7); ctx.fill();
+  }
+
   buildingSprite(e, t) {
     const sp = this.sp;
     const on = e.status === 'work';
@@ -479,6 +542,10 @@ export class Renderer {
       case 'crafter': return e.type === 'prensa' ? sp.press[e.dir][a % 8] : sp.assembler[e.dir][a % 12];
       case 'chest': return sp.chest;
       case 'splitter': return sp.splitter[e.dir];
+      case 'pole': return sp.pole;
+      case 'pump': return sp.pump[e.status === 'idle' ? 0 : ((t * 12) | 0) % 8];
+      case 'boiler': return e.status === 'work' ? sp.boiler.on[e.dir][((t * 8) | 0) % 6] : sp.boiler.off[e.dir];
+      case 'generator': return sp.generator[e.status === 'work' ? ((t * 20) | 0) % 12 : 0];
       case 'hub': return sp.hub[((t * 6) | 0) % 12];
     }
     return sp.chest;
@@ -490,12 +557,13 @@ export class Renderer {
     const s = def.size * TILE;
     ctx.globalAlpha = 0.6;
     const fake = { kind: def.kind, type: g.type, dir: g.dir, status: 'idle' };
-    const img = def.kind === 'belt' ? sp.belt[g.type === 'cinta2' ? 2 : 1][g.dir][0] : this.buildingSprite(fake, 0);
-    ctx.drawImage(img, g.x * TILE, g.y * TILE, s, s);
+    if (def.kind === 'pipe') { ctx.globalAlpha = 0.6; ctx.fillStyle = '#5a5e63'; ctx.beginPath(); ctx.arc((g.x + 0.5) * TILE, (g.y + 0.5) * TILE, 8, 0, 7); ctx.fill(); ctx.globalAlpha = 1; }
+    const img = def.kind === 'pipe' ? null : def.kind === 'belt' ? sp.belt[g.type === 'cinta2' ? 2 : 1][g.dir][0] : this.buildingSprite(fake, 0);
+    if (img) ctx.drawImage(img, g.x * TILE, g.y * TILE, s, s);
     ctx.globalAlpha = 1;
     ctx.fillStyle = g.ok ? 'rgba(80,220,150,0.25)' : 'rgba(240,70,60,0.35)';
     ctx.fillRect(g.x * TILE, g.y * TILE, s, s);
-    if (def.kind !== 'belt' && def.kind !== 'chest') {
+    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator'].includes(def.kind)) {
       const m = (def.size - 1) >> 1, sz = def.size;
       const out = [[g.x + sz, g.y + m], [g.x + sz - 1 - m, g.y + sz], [g.x - 1, g.y + sz - 1 - m], [g.x + m, g.y - 1]][g.dir];
       this.arrow(out[0], out[1], g.dir, 'rgba(255,190,80,0.95)');

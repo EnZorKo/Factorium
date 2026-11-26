@@ -58,43 +58,63 @@ export const RECIPES = {
 export const BUILDINGS = {
   cinta:        { name: 'Cinta',        kind: 'belt',     size: 1, speed: 1.875, cost: { lingFerrico: 1 }, key: '1',
                   desc: 'Mueve objetos. Arrastra para trazar una línea.' },
-  taladro:      { name: 'Taladro',      kind: 'miner',    size: 2, rate: 0.5, cost: { lingFerrico: 6, lingCobalina: 4 }, key: '2',
-                  desc: 'Ponlo sobre un recurso. Saca el mineral por la flecha.' },
-  horno:        { name: 'Horno',        kind: 'furnace',  size: 2, cost: { ferrita: 12 }, key: '3',
-                  desc: 'Funde mineral en lingotes. Recibe por cualquier lado y saca por la flecha.' },
+  taladro:      { name: 'Taladro',      kind: 'miner',    size: 2, rate: 0.5, power: 90, cost: { lingFerrico: 6, lingCobalina: 4 }, key: '2',
+                  desc: 'Ponlo sobre un recurso. Saca el mineral por la flecha. Necesita energía.' },
+  horno:        { name: 'Horno eléctrico', kind: 'furnace', size: 2, power: 90, cost: { ferrita: 12 }, key: '3',
+                  desc: 'Funde mineral en lingotes. Recibe por cualquier lado y saca por la flecha. Necesita energía.' },
   caja:         { name: 'Caja',         kind: 'chest',    size: 1, capacity: 200, cost: { lingFerrico: 4 }, key: '4',
                   desc: 'Guarda objetos. Tócala para recogerlos.' },
-  divisor:      { name: 'Divisor',      kind: 'splitter', size: 1, cost: { lingFerrico: 2, lingCobalina: 2 }, key: '5',
+  poste:        { name: 'Poste eléctrico', kind: 'pole',  size: 1, supply: 3, wire: 9, cost: { lingFerrico: 2, lingCobalina: 1 }, key: '5',
+                  desc: 'Da energía a las máquinas de su zona (7×7) y se une por cable a postes cercanos.' },
+  divisor:      { name: 'Divisor',      kind: 'splitter', size: 1, cost: { lingFerrico: 2, lingCobalina: 2 }, key: '6',
                   desc: 'Reparte lo que entra por detrás entre delante, izquierda y derecha.' },
-  cinta2:       { name: 'Cinta Mk2',    kind: 'belt',     size: 1, speed: 3.75, cost: { lingFerrico: 2, lingCobalina: 1 }, key: '6', upgradeOf: 'cinta',
+  cinta2:       { name: 'Cinta Mk2',    kind: 'belt',     size: 1, speed: 3.75, cost: { lingFerrico: 2, lingCobalina: 1 }, key: '7', upgradeOf: 'cinta',
                   desc: 'El doble de rápida. Ponla encima de una cinta para mejorarla.' },
-  prensa:       { name: 'Prensa',       kind: 'crafter',  size: 2, cost: { lingFerrico: 20, lingCobalina: 10 }, key: '7', defaultRecipe: 'chapa',
-                  desc: 'Convierte lingotes en piezas. Tócala para elegir receta.' },
-  ensambladora: { name: 'Ensambladora', kind: 'crafter',  size: 3, cost: { chapa: 20, eje: 20, hilo: 20 }, key: '8', defaultRecipe: 'engranaje',
-                  desc: 'Une varias piezas en una más compleja. Tócala para elegir receta.' },
-  taladro2:     { name: 'Taladro Mk2',  kind: 'miner',    size: 2, rate: 1.0, cost: { lingFerrico: 10, lingCobalina: 8, pastilla: 4 }, key: '9', upgradeOf: 'taladro',
+  prensa:       { name: 'Prensa',       kind: 'crafter',  size: 2, power: 75, cost: { lingFerrico: 20, lingCobalina: 10 }, key: '8', defaultRecipe: 'chapa',
+                  desc: 'Convierte lingotes en piezas. Tócala para elegir receta. Necesita energía.' },
+  ensambladora: { name: 'Ensambladora', kind: 'crafter',  size: 3, power: 150, cost: { chapa: 20, eje: 20, hilo: 20 }, key: '9', defaultRecipe: 'engranaje',
+                  desc: 'Une varias piezas en una más compleja. Tócala para elegir receta. Necesita energía.' },
+  taladro2:     { name: 'Taladro Mk2',  kind: 'miner',    size: 2, rate: 1.0, power: 180, cost: { lingFerrico: 10, lingCobalina: 8, pastilla: 4 }, key: '0', upgradeOf: 'taladro',
                   desc: 'Extrae el doble de rápido. Ponlo encima de un taladro para mejorarlo.' },
-  baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, cost: {}, hidden: true,
-                  desc: 'Tu base. Todo lo que entra va a tu inventario.' },
+  bomba:        { name: 'Bomba de agua', kind: 'pump',    size: 1, cost: { lingFerrico: 8, lingCobalina: 2 }, key: 'b',
+                  desc: 'Ponla en la orilla, tocando el agua. Abastece hasta 4 calderas por tubería.' },
+  tuberia:      { name: 'Tubería',      kind: 'pipe',     size: 1, cost: { lingFerrico: 1 }, key: 'p',
+                  desc: 'Lleva agua de la bomba a las calderas. Arrastra para trazar.' },
+  caldera:      { name: 'Caldera',      kind: 'boiler',   size: 2, cost: { lingFerrico: 20, ferrita: 10 }, key: 'k',
+                  desc: 'Quema carbón o coque y calienta agua. Pon generadores tocándola (hasta 2).' },
+  generador:    { name: 'Generador de vapor', kind: 'generator', size: 3, output: 900, cost: { lingFerrico: 30, lingCobalina: 15 }, key: 'g',
+                  desc: 'Da 900 kW con el vapor de una caldera que lo toque. Conéctalo a un poste.' },
+  baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, supply: 6, wire: 9, output: 180, cost: {}, hidden: true,
+                  desc: 'Tu base. Todo lo que entra va a tu inventario. Da 180 kW de energía de emergencia a su alrededor.' },
 };
+
+export const FUEL = { musgo: 4000, pastilla: 9000 }; // kJ por unidad
+export const PUMP_BOILERS = 4;
+export const BOILER_GENS = 2;
 
 // Hitos: el primero viene desbloqueado.
 export const MILESTONES = [
   { id: 'aterrizaje', name: 'Aterrizaje', cost: {},
-    unlocks: ['cinta', 'taladro', 'horno', 'caja'],
-    text: 'Coloca taladros sobre los recursos y lleva el mineral a un horno.' },
-  { id: 'reparto', name: 'Reparto', cost: { lingFerrico: 40, lingCobalina: 20 },
+    unlocks: ['cinta', 'taladro', 'horno', 'caja', 'poste'],
+    text: 'La Baliza da algo de energía a su alrededor. Usa postes para llevarla más lejos.' },
+  { id: 'vapor', name: 'Energía de vapor', cost: { lingFerrico: 50, lingCobalina: 25 },
+    unlocks: ['bomba', 'tuberia', 'caldera', 'generador'],
+    text: 'Bomba en el agua → tubería → caldera con carbón → generador tocando la caldera → poste.' },
+  { id: 'reparto', name: 'Reparto', cost: { lingFerrico: 120, lingCobalina: 60 },
     unlocks: ['divisor', 'cinta2'],
     text: 'Divisores para repartir y cintas el doble de rápidas.' },
-  { id: 'taller', name: 'Taller', cost: { lingFerrico: 100, lingCobalina: 50, pastilla: 10 },
+  { id: 'taller', name: 'Taller', cost: { lingFerrico: 200, lingCobalina: 100, pastilla: 30 },
     unlocks: ['prensa'],
     text: 'La Prensa convierte lingotes en Placas, Varillas y Cable de cobre.' },
-  { id: 'ensamblaje', name: 'Ensamblaje', cost: { chapa: 60, eje: 60, hilo: 60 },
+  { id: 'ensamblaje', name: 'Ensamblaje', cost: { chapa: 100, eje: 100, hilo: 100 },
     unlocks: ['ensambladora', 'taladro2'],
     text: 'La Ensambladora une piezas: Engranaje, Bobina, Bastidor, Actuador y Unidad de tracción. Y taladros más rápidos.' },
-  { id: 'chispa', name: 'Primera chispa', cost: null, unlocks: [],
-    text: 'Electricidad, nuevas máquinas y biomas llegarán en la fase 2.' },
+  { id: 'renovables', name: 'Renovables', cost: null, unlocks: [],
+    text: 'Paneles solares y baterías llegarán en la próxima fase.' },
 ];
+
+// Hoja de ruta de energía (se muestra en Hitos).
+export const ROADMAP = ['Renovables: paneles solares y baterías', 'Petróleo: extracción, refinería y generadores de combustible', 'Nuclear: uranio, reactor e intercambiadores de calor'];
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [
@@ -108,4 +128,4 @@ export const TASKS = [
   { item: 'traccion',  n: 400, reward: {} },
 ];
 
-export const START_INVENTORY = { lingFerrico: 40, lingCobalina: 12, ferrita: 12 };
+export const START_INVENTORY = { lingFerrico: 60, lingCobalina: 20, ferrita: 24 };

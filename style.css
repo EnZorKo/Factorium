@@ -138,3 +138,5 @@ canvas#game { position: fixed; inset: 0; touch-action: none; display: block; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(79,209,189,0.9); } 50% { box-shadow: 0 0 0 6px rgba(79,209,189,0); } }
 #sheet { z-index: 4; }
 @media (max-width: 700px) { body.sheet-open #actions, body.sheet-open #joy, body.sheet-open #hint { display: none !important; } }
+.st-power { color: #5aa0ff; }
+.help.bad, .bad { color: var(--bad); }

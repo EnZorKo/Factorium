@@ -1,5 +1,5 @@
 // Arranque, bucle principal y la interfaz (HUD, dron, objetivos y paneles).
-import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE } from './config.js';
+import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE, ROADMAP, FUEL } from './config.js';
 import { Game, setItemNamer } from './sim.js';
 import { Renderer } from './render.js';
 import { Input } from './input.js';
@@ -14,6 +14,9 @@ const STATUS_TEXT = {
   idle: ['st-idle', 'Esperando material'],
   full: ['st-full', 'Salida atascada: conecta una cinta o máquina donde apunta la flecha'],
   empty: ['st-empty', 'Yacimiento agotado: muévelo a otra veta'],
+  nopower: ['st-power', 'Sin energía: ponle un poste cerca conectado a la red'],
+  nowater: ['st-full', 'Sin agua: conéctala con tuberías a una bomba'],
+  nofuel: ['st-idle', 'Sin combustible: llévale carbón o coque'],
 };
 setItemNamer((k) => ITEMS[k].name);
 
@@ -268,7 +271,24 @@ class App {
     const st = STATUS_TEXT[e.status];
     let h = `<h3>${d.name} ${DIR_NAMES[e.dir]}</h3>`;
     if (st && e.kind !== 'chest' && e.kind !== 'belt' && e.kind !== 'splitter') h += `<div class="status ${st[0]}">● ${st[1]}</div>`;
+    const net = e.net;
+    if (e.def.power || e.kind === 'pole' || e.kind === 'generator') {
+      if (net) {
+        const pct = net.lastDemand ? Math.min(100, (net.cap / net.lastDemand) * 100) : 100;
+        h += `<div class="help">⚡ Red: produce <b>${net.cap.toFixed(0)} kW</b> · consume <b>${(net.lastDemand || 0).toFixed(0)} kW</b>${net.lastDemand > net.cap ? ` · <span class="bad">las máquinas van al ${pct.toFixed(0)}%</span>` : ''}</div>`;
+      } else if (e.kind !== 'pole') h += `<div class="help bad">⚡ No está conectado a ninguna red</div>`;
+      if (e.def.power) h += `<div class="help">Consume ${e.def.power} kW</div>`;
+    }
     switch (e.kind) {
+      case 'boiler': {
+        h += `<div class="slots">${e.fuelType ? this.slot(e.fuelType, e.fuel) : '<span class="slot">sin combustible</span>'}</div>`;
+        h += `<div class="help">Agua: ${(e.water * 100).toFixed(0)}% · alimenta ${e.gens.length} de 2 generadores · quema carbón o coque (que le llegue por cinta).</div>`;
+        break;
+      }
+      case 'generator': h += `<div class="help">${e.boiler ? `Recibe vapor de una caldera · da ${(e.avail || 0).toFixed(0)} kW disponibles` : '<span class="bad">Necesita una caldera tocándolo</span>'}</div>`; break;
+      case 'pump': h += '<div class="help">Saca agua para hasta 4 calderas conectadas con tuberías.</div>'; break;
+      case 'pipe': h += '<div class="help">Une bombas y calderas.</div>'; break;
+      case 'pole': h += '<div class="help">Da energía a lo que esté en su zona azul y se conecta solo a postes cercanos (hasta 9 casillas).</div>'; break;
       case 'miner': {
         const w = this.game.world;
         let left = 0;
@@ -398,7 +418,7 @@ class App {
     if (s.erase) { this.hintHtml('Modo quitar: toca o arrastra sobre edificios. Recuperas todo el material.'); return; }
     if (s.tool) {
       const d = BUILDINGS[s.tool];
-      this.hintHtml(`<b>${d.name}</b> ${DIR_NAMES[s.dir]} · ${d.desc} <span class="cost">· ${this.costHtml(d.cost)}</span>`);
+      this.hintHtml(`<b>${d.name}</b> ${DIR_NAMES[s.dir]} · ${d.desc}${d.power ? ` (${d.power} kW)` : ''} <span class="cost">· ${this.costHtml(d.cost)}</span>`);
       return;
     }
     if (!s.hover) { this.hintHtml(''); return; }
@@ -534,7 +554,7 @@ class App {
     for (const id of ITEM_IDS) {
       const n = this.game.inv[id] || 0;
       const c = this.chips[id];
-      c.classList.toggle('hidden', n === 0 && !['ferrita', 'cobalina', 'lingFerrico', 'lingCobalina'].includes(id));
+      c.classList.toggle('hidden', n === 0 && !['ferrita', 'cobalina', 'musgo', 'lingFerrico', 'lingCobalina'].includes(id));
       const span = c.lastChild;
       const txt = String(n);
       if (span.textContent !== txt) span.textContent = txt;
@@ -568,6 +588,7 @@ class App {
         <p><b>Moverte:</b> ${touch ? 'joystick abajo a la izquierda · arrastra el mapa para mirar · dos dedos para zoom' : 'WASD o flechas · arrastra el mapa para mirar · rueda para zoom'}.</p>
         <p><b>Extraer a mano:</b> acércate a un recurso y mantén pulsado encima.</p>
         <p><b>Construir:</b> elige un edificio abajo y toca el mapa. Las máquinas sacan lo que producen por la flecha naranja: pon delante una cinta u otra máquina.</p>
+        <p><b>Energía:</b> taladros, hornos y fábricas necesitan electricidad. Al principio la Baliza da un poco a su alrededor; con postes la llevas más lejos. Después tendrás que montar tu central de vapor con carbón y agua.</p>
         <p><b>La niebla</b> esconde lo que aún no has explorado. Los yacimientos se agotan: tendrás que buscar más.</p>
         <p><b>Objetivo:</b> arriba a la izquierda verás qué entregar en la Baliza. Cómo lo consigas es cosa tuya.</p>
       </div>
@@ -592,6 +613,7 @@ class App {
     } else if (next) {
       body = `<h2>${next.name}</h2><p>${next.text}</p>`;
     }
+    body += `<b>Próximas etapas de energía</b><ul class="help">${ROADMAP.map((r) => `<li>${r}</li>`).join('')}</ul>`;
     body += `<p class="help">Los materiales salen de tu inventario. Llévalos a la Baliza con cintas: todo lo que entra se suma.</p><b>Completados</b><ul class="done-list">${done}</ul>`;
     const box = document.querySelector('.panel-box');
     const scroll = $('panel').classList.contains('hidden') ? 0 : box.scrollTop;

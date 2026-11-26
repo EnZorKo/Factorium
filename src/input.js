@@ -46,7 +46,7 @@ export class Input {
     if (e.button === 2) { this.mode = 'erase'; this.app.erase(t.x, t.y); return; }
     if (this.state.erase) { this.mode = 'erase'; this.app.erase(t.x, t.y); return; }
     const tool = this.state.tool;
-    if (tool && BUILDINGS[tool].kind === 'belt') {
+    if (tool && (BUILDINGS[tool].kind === 'belt' || BUILDINGS[tool].kind === 'pipe')) {
       this.mode = 'belt';
       this.beltLast = null;
       this.beltStep(t.x, t.y);

@@ -500,6 +500,101 @@ function droneSprite(f) {
   return c;
 }
 
+function poleSprite() {
+  const c = canvas(S, S);
+  const x = c.getContext('2d');
+  const m = S / 2;
+  // sombra alargada (el poste es alto)
+  x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 8; x.lineCap = 'round';
+  x.beginPath(); x.moveTo(m, m); x.lineTo(m + 18, m + 22); x.stroke();
+  // base
+  x.fillStyle = '#2b2e31';
+  x.beginPath(); x.arc(m, m, 13, 0, 7); x.fill();
+  x.fillStyle = '#6b5440';
+  x.beginPath(); x.arc(m, m, 10, 0, 7); x.fill();
+  x.fillStyle = '#8a6c50';
+  x.beginPath(); x.arc(m - 2, m - 2, 5, 0, 7); x.fill();
+  // travesaño con aisladores
+  x.fillStyle = '#1e2022';
+  x.fillRect(m - 27, m - 5, 54, 10);
+  x.fillStyle = '#5a5e63';
+  x.fillRect(m - 26, m - 4, 52, 4);
+  for (const dx of [-21, 0, 21]) {
+    x.fillStyle = '#1e2022'; x.beginPath(); x.arc(m + dx, m, 6, 0, 7); x.fill();
+    x.fillStyle = '#d88a48'; x.beginPath(); x.arc(m + dx, m, 4, 0, 7); x.fill();
+    x.fillStyle = '#ffd08a'; x.beginPath(); x.arc(m + dx - 1, m - 1, 1.5, 0, 7); x.fill();
+  }
+  return c;
+}
+
+function pumpSprite(f) {
+  const c = canvas(S, S);
+  const x = c.getContext('2d');
+  metalPlate(x, 4, 4, S - 8, S - 8, '#3f5a66', '#1c2a30');
+  x.fillStyle = '#1b2226';
+  x.beginPath(); x.arc(S / 2, S / 2, 16, 0, 7); x.fill();
+  x.save(); x.translate(S / 2, S / 2); x.rotate(f * 0.8);
+  x.fillStyle = '#5fb6f0';
+  for (let i = 0; i < 4; i++) { x.rotate(Math.PI / 2); x.fillRect(-2, 2, 4, 12); }
+  x.restore();
+  x.fillStyle = '#8c9197'; x.beginPath(); x.arc(S / 2, S / 2, 4, 0, 7); x.fill();
+  rivets(x, 4, 4, S - 8, S - 8, 6);
+  return c;
+}
+
+function boilerSprite(lit, f) {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4a3f3a', '#1e1915');
+  // depósito
+  const g = x.createLinearGradient(20, 0, W - 20, 0);
+  g.addColorStop(0, '#5f6368'); g.addColorStop(0.5, '#9aa0a7'); g.addColorStop(1, '#4d5156');
+  x.fillStyle = g;
+  x.beginPath(); x.roundRect(18, 14, W - 36, 56, 22); x.fill();
+  x.fillStyle = '#2b2e31';
+  for (const yy of [30, 50]) x.fillRect(18, yy, W - 36, 3);
+  // hogar
+  x.fillStyle = '#141212';
+  x.fillRect(34, 80, W - 68, 32);
+  if (lit) {
+    const k = 0.75 + 0.25 * Math.sin(f * 1.7);
+    const gg = x.createLinearGradient(0, 80, 0, 112);
+    gg.addColorStop(0, `rgba(255,200,90,${k})`); gg.addColorStop(1, `rgba(255,90,20,${k})`);
+    x.fillStyle = gg; x.fillRect(36, 82, W - 72, 28);
+  }
+  x.fillStyle = '#5a5e63';
+  for (let i = 0; i < 5; i++) x.fillRect(36 + i * 12, 80, 3, 32);
+  rivets(x, 3, 3, W - 6, W - 6, 9);
+  grime(x, W, W, 91, 0.12);
+  return c;
+}
+
+function generatorSprite(f) {
+  const W = S * 3;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4b5258');
+  hazard(x, 10, 10, W - 20, 10);
+  rivets(x, 3, 3, W - 6, W - 6, 10);
+  // carcasa de la turbina
+  x.fillStyle = '#25282b';
+  x.beginPath(); x.arc(W / 2, W / 2 + 6, 58, 0, 7); x.fill();
+  x.save(); x.translate(W / 2, W / 2 + 6); x.rotate(f * 0.35);
+  for (let i = 0; i < 10; i++) {
+    x.rotate((Math.PI * 2) / 10);
+    x.fillStyle = i % 2 ? '#9aa0a7' : '#7b8086';
+    x.beginPath(); x.moveTo(8, -4); x.lineTo(52, -12); x.lineTo(52, 4); x.lineTo(8, 4); x.closePath(); x.fill();
+  }
+  x.restore();
+  x.fillStyle = '#3a3d41';
+  x.beginPath(); x.arc(W / 2, W / 2 + 6, 14, 0, 7); x.fill();
+  x.fillStyle = '#f2c14a';
+  x.beginPath(); x.moveTo(W / 2 + 2, W / 2 - 4); x.lineTo(W / 2 - 6, W / 2 + 8); x.lineTo(W / 2, W / 2 + 8); x.lineTo(W / 2 - 3, W / 2 + 17); x.lineTo(W / 2 + 6, W / 2 + 4); x.lineTo(W / 2, W / 2 + 4); x.closePath(); x.fill();
+  grime(x, W, W, 101, 0.12);
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -590,6 +685,10 @@ export function buildSprites() {
   sp.press = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pressSprite(f), d)));
   sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
+  sp.pole = poleSprite();
+  sp.pump = Array.from({ length: 8 }, (_, f) => pumpSprite(f));
+  sp.boiler = { off: [0, 1, 2, 3].map((d) => rotated(boilerSprite(false, 0), d)), on: [0, 1, 2, 3].map((d) => Array.from({ length: 6 }, (_, f) => rotated(boilerSprite(true, f), d))) };
+  sp.generator = Array.from({ length: 12 }, (_, f) => generatorSprite(f * (Math.PI * 2 / 0.35) / 12 / 10 * 2));
   for (const t of [1, 2, 3]) sp.res[t] = Array.from({ length: 8 }, (_, v) => resourceTile(t, v));
   return sp;
 }
@@ -609,6 +708,11 @@ export function toolIcon(sp, type) {
     case 'divisor': img = sp.splitter[0]; break;
     case 'prensa': img = sp.press[0][0]; break;
     case 'ensambladora': img = sp.assembler[0][0]; break;
+    case 'poste': img = sp.pole; break;
+    case 'bomba': img = sp.pump[0]; break;
+    case 'tuberia': { x.fillStyle = '#6b7076'; x.fillRect(4, 18, 40, 12); x.fillStyle = '#9aa0a7'; x.fillRect(4, 20, 40, 3); x.fillStyle = '#3a3d41'; x.fillRect(10, 16, 4, 16); x.fillRect(34, 16, 4, 16); return c.toDataURL(); }
+    case 'caldera': img = sp.boiler.on[0][0]; break;
+    case 'generador': img = sp.generator[0]; break;
     default: img = sp.chest;
   }
   x.drawImage(img, 2, 2, 44, 44);

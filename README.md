@@ -9,6 +9,7 @@ Juego de automatización 2D con vista cenital, para navegador (PC y tablet). Est
 - Edificios: Cinta, Cinta Mk2, Taladro, Taladro Mk2, Horno, Prensa, Ensambladora, Caja, Divisor y la Baliza de aterrizaje.
 - 14 objetos y recetas encadenadas: mineral → lingote → placa, varilla y cable → engranaje, bobina y bastidor → actuador → unidad de tracción.
 - 8 objetivos de entrega de piezas elaboradas en grandes cantidades (por ejemplo, 800 Actuadores), con recompensa, y 4 hitos que desbloquean edificios.
+- Energía: la Baliza da 180 kW de emergencia; luego central de vapor (bomba de agua, tuberías, caldera de carbón o coque y generador de 900 kW) y postes con cables. Las máquinas consumen y van más lentas si falta energía. Próximas etapas: renovables, petróleo y nuclear.
 - Máquinas con luz de estado, humo, chispas y panel al tocarlas (receta, contenido, girar, mover y quitar).
 - Minimapa, autoguardado cada 30 s y al cerrar, y exportar/importar partida.
 

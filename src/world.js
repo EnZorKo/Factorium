@@ -41,6 +41,11 @@ export class World {
         this.terrain[this.idx(x, y)] = t;
       }
     }
+    // Lago pequeño cerca de la Baliza para la primera bomba de agua
+    for (let y = cy - 25; y <= cy - 11; y++) for (let x = cx - 8; x <= cx + 12; x++) {
+      const d = Math.hypot((x - (cx + 3)) / 1.5, y - (cy - 18));
+      if (d + (fbm(x / 3, y / 3, seed + 99, 2) - 0.5) * 2 < 4) this.terrain[this.idx(x, y)] = T_WATER;
+    }
     const rnd = mulberry32(seed ^ 0x9e3779b9);
     // Vetas de inicio: cerca de la Baliza pero pequeñas, para que haya que explorar pronto.
     this.patch(cx - 13, cy - 6, 1, 4.5, rnd, 0.7);
