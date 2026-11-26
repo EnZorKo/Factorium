@@ -122,6 +122,51 @@ function itemIcon(id, size = 32) {
     x.beginPath(); x.roundRect(7, 9, 18, 11, 4); x.fill();
     x.fillStyle = 'rgba(255,255,255,0.35)';
     x.fillRect(10, 11, 9, 2);
+  } else if (it.shape === 'plate') {
+    x.fillStyle = it.dark;
+    x.beginPath(); x.moveTo(5, 13); x.lineTo(19, 6); x.lineTo(28, 14); x.lineTo(14, 22); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(5, 13); x.lineTo(14, 22); x.lineTo(14, 26); x.lineTo(5, 17); x.closePath(); x.fill();
+    x.beginPath(); x.moveTo(14, 22); x.lineTo(28, 14); x.lineTo(28, 18); x.lineTo(14, 26); x.closePath(); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = it.color;
+    x.beginPath(); x.moveTo(6, 13); x.lineTo(19, 7); x.lineTo(27, 14); x.lineTo(14, 21); x.closePath(); x.fill();
+    x.strokeStyle = 'rgba(255,255,255,0.35)'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(10, 13); x.lineTo(19, 9); x.stroke();
+  } else if (it.shape === 'rod') {
+    for (const [ox, oy] of [[0, 0], [4, 4]]) {
+      x.strokeStyle = it.dark; x.lineWidth = 5; x.lineCap = 'round';
+      x.beginPath(); x.moveTo(6 + ox, 22 + oy - 4); x.lineTo(24 + ox, 6 + oy); x.stroke();
+      x.shadowColor = 'transparent';
+      x.strokeStyle = it.color; x.lineWidth = 2.5;
+      x.beginPath(); x.moveTo(6 + ox, 21 + oy - 4); x.lineTo(24 + ox, 5 + oy); x.stroke();
+    }
+  } else if (it.shape === 'wire') {
+    x.strokeStyle = '#7a5a2a'; x.lineWidth = 4;
+    x.beginPath(); x.arc(16, 16, 9, 0, 7); x.stroke();
+    x.shadowColor = 'transparent';
+    x.strokeStyle = it.color; x.lineWidth = 2;
+    for (let i = 0; i < 3; i++) { x.beginPath(); x.arc(16, 16, 6 + i * 3, 0.3 + i, 5.6 + i); x.stroke(); }
+  } else if (it.shape === 'gear') {
+    x.fillStyle = it.dark;
+    x.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2, r = i % 2 ? 9 : 12.5;
+      i ? x.lineTo(16 + Math.cos(a) * r, 16 + Math.sin(a) * r) : x.moveTo(16 + r, 16);
+    }
+    x.closePath(); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = it.color;
+    x.beginPath(); x.arc(16, 16, 8.5, 0, 7); x.fill();
+    x.fillStyle = it.dark;
+    x.beginPath(); x.arc(16, 16, 3.5, 0, 7); x.fill();
+  } else if (it.shape === 'coil') {
+    x.fillStyle = it.dark;
+    x.fillRect(7, 8, 18, 16);
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#c87a3a';
+    for (let i = 0; i < 6; i++) x.fillRect(8, 9 + i * 2.5, 16, 1.6);
+    x.fillStyle = '#6b7076';
+    x.fillRect(5, 6, 22, 3); x.fillRect(5, 23, 22, 3);
   }
   return c;
 }
@@ -327,6 +372,108 @@ function hubSprite(f) {
   return c;
 }
 
+function pressSprite(f) {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4f5a5e');
+  hazard(x, 8, 8, 10, W - 16);
+  rivets(x, 3, 3, W - 6, W - 6, 9);
+  // mesa
+  x.fillStyle = '#1d1f21';
+  x.fillRect(30, 28, 68, 72);
+  // pistón (sube y baja)
+  const k = (Math.sin(f / 8 * Math.PI * 2) + 1) / 2;
+  x.fillStyle = 'rgba(0,0,0,0.4)';
+  x.fillRect(36 + 4, 34 + 8 * k + 4, 56, 56);
+  const g = x.createLinearGradient(36, 0, 92, 0);
+  g.addColorStop(0, '#9aa0a7'); g.addColorStop(1, '#5c6066');
+  x.fillStyle = g;
+  x.fillRect(36, 34 + 8 * k - 6, 56, 56);
+  x.fillStyle = '#c2632a';
+  x.fillRect(36, 34 + 8 * k - 6, 56, 6);
+  x.fillStyle = '#3a3d41';
+  x.fillRect(58, 50 + 8 * k, 12, 20);
+  // salida
+  x.fillStyle = '#26282b';
+  x.fillRect(W - 16, 18, 13, 28);
+  x.fillStyle = '#c2632a';
+  x.beginPath(); x.moveTo(W - 12, 24); x.lineTo(W - 5, 32); x.lineTo(W - 12, 40); x.fill();
+  grime(x, W, W, 71, 0.12);
+  return c;
+}
+
+function assemblerSprite(f) {
+  const W = S * 3;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#55524e');
+  hazard(x, 10, W - 22, W - 20, 10);
+  rivets(x, 3, 3, W - 6, W - 6, 10);
+  x.fillStyle = '#1d1f21';
+  x.fillRect(34, 34, W - 68, W - 68);
+  // brazos robóticos
+  const a = (f / 12) * Math.PI * 2;
+  for (const [bx, by, ph] of [[46, 46, 0], [W - 46, W - 46, Math.PI]]) {
+    const ang = a + ph;
+    const ex = bx + Math.cos(ang) * 30, ey = by + Math.sin(ang * 0.7) * 30 + 10;
+    x.strokeStyle = '#2a2c2f'; x.lineWidth = 10; x.lineCap = 'round';
+    x.beginPath(); x.moveTo(bx, by); x.lineTo(ex, ey); x.stroke();
+    x.strokeStyle = '#c2632a'; x.lineWidth = 6;
+    x.beginPath(); x.moveTo(bx, by); x.lineTo(ex, ey); x.stroke();
+    x.fillStyle = '#8c9197';
+    x.beginPath(); x.arc(bx, by, 9, 0, 7); x.fill();
+    x.fillStyle = '#4fd1bd';
+    x.beginPath(); x.arc(ex, ey, 4, 0, 7); x.fill();
+  }
+  // pieza central
+  x.fillStyle = '#7b8086';
+  x.beginPath(); x.arc(W / 2, W / 2, 14, 0, 7); x.fill();
+  x.fillStyle = '#3a3d41';
+  x.beginPath(); x.arc(W / 2, W / 2, 5, 0, 7); x.fill();
+  // salida
+  x.fillStyle = '#26282b';
+  x.fillRect(W - 18, W / 2 - 16, 15, 32);
+  x.fillStyle = '#c2632a';
+  x.beginPath(); x.moveTo(W - 14, W / 2 - 8); x.lineTo(W - 6, W / 2); x.lineTo(W - 14, W / 2 + 8); x.fill();
+  grime(x, W, W, 81, 0.12);
+  return c;
+}
+
+function droneSprite(f) {
+  const W = 96;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  x.translate(W / 2, W / 2);
+  // brazos y rotores
+  for (let i = 0; i < 4; i++) {
+    const a = Math.PI / 4 + (i * Math.PI) / 2;
+    const rx = Math.cos(a) * 30, ry = Math.sin(a) * 30;
+    x.strokeStyle = '#2b2e31'; x.lineWidth = 7;
+    x.beginPath(); x.moveTo(0, 0); x.lineTo(rx, ry); x.stroke();
+    x.fillStyle = 'rgba(200,220,230,0.18)';
+    x.beginPath(); x.arc(rx, ry, 15, 0, 7); x.fill();
+    x.strokeStyle = 'rgba(230,240,245,0.6)'; x.lineWidth = 2.5;
+    const sp = f * 1.7 + i;
+    x.beginPath(); x.moveTo(rx - Math.cos(sp) * 14, ry - Math.sin(sp) * 14); x.lineTo(rx + Math.cos(sp) * 14, ry + Math.sin(sp) * 14); x.stroke();
+    x.fillStyle = '#5a5e63';
+    x.beginPath(); x.arc(rx, ry, 4, 0, 7); x.fill();
+  }
+  // cuerpo
+  const g = x.createLinearGradient(-16, -16, 16, 16);
+  g.addColorStop(0, '#e08a3c'); g.addColorStop(1, '#8a4a1c');
+  x.fillStyle = '#1c1e20';
+  x.beginPath(); x.roundRect(-17, -14, 34, 28, 8); x.fill();
+  x.fillStyle = g;
+  x.beginPath(); x.roundRect(-15, -12, 30, 24, 7); x.fill();
+  // ojo (mira a la derecha)
+  x.fillStyle = '#16191a';
+  x.beginPath(); x.roundRect(4, -6, 10, 12, 3); x.fill();
+  x.fillStyle = '#4fd1bd';
+  x.beginPath(); x.arc(10, 0, 3.2, 0, 7); x.fill();
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -407,6 +554,9 @@ export function buildSprites() {
   sp.chest = chestSprite();
   sp.splitter = [0, 1, 2, 3].map((d) => rotated(splitterSprite(), d));
   sp.hub = Array.from({ length: 12 }, (_, f) => hubSprite(f));
+  sp.press = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pressSprite(f), d)));
+  sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
+  sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   for (const t of [1, 2, 3]) sp.res[t] = Array.from({ length: 8 }, (_, v) => resourceTile(t, v));
   return sp;
 }
@@ -424,6 +574,8 @@ export function toolIcon(sp, type) {
     case 'horno': img = sp.furnace.on[0][0]; break;
     case 'caja': img = sp.chest; break;
     case 'divisor': img = sp.splitter[0]; break;
+    case 'prensa': img = sp.press[0][0]; break;
+    case 'ensambladora': img = sp.assembler[0][0]; break;
     default: img = sp.chest;
   }
   x.drawImage(img, 2, 2, 44, 44);

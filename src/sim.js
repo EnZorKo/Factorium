@@ -1,30 +1,36 @@
-// Simulación: edificios, cintas y flujo de objetos.
-import { BUILDINGS, FURNACE_RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS } from './config.js';
+// Simulación: edificios, cintas, flujo de objetos, yacimientos y progreso.
+import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R } from './config.js';
 import { World } from './world.js';
 
 export const DX = [1, 0, -1, 0];
 export const DY = [0, 1, 0, -1];
 const GAP = 0.25;          // separación mínima entre objetos en una cinta (4 por casilla)
 const MAX_ON_BELT = 4;
-const FURNACE_BUF = 20;
+const OUT_BUF = 20;
+const ITEM_NUM = Object.fromEntries(ITEM_IDS.map((id, i) => [id, i]));
 
 export class Game {
   constructor(seed = (Math.random() * 1e9) | 0) {
     this.world = new World(seed);
     const n = this.world.w * this.world.h;
     this.grid = new Int32Array(n).fill(-1);
-    this.ents = [];           // índice = id; huecos = null
+    this.ents = [];
     this.free = [];
-    this.belts = [];          // cintas en orden de proceso (de delante hacia atrás)
-    this.machines = [];       // resto de edificios activos
+    this.belts = [];
+    this.machines = [];
     this.orderDirty = true;
     this.tick = 0;
     this.inv = Object.fromEntries(ITEM_IDS.map((id) => [id, 0]));
     Object.assign(this.inv, START_INVENTORY);
-    this.milestone = 0;       // índice del último hito completado
+    this.milestone = 0;
     this.unlocked = new Set(MILESTONES[0].unlocks);
+    this.stats = { mined: {}, built: {}, delivered: {} };
+    this.task = 0;
+    this.depleted = new Set(); // casillas cuya cantidad cambió (para guardar)
     this.listeners = new Set();
     const s = this.world.spawn;
+    this.drone = { x: s.x + 1.5, y: s.y + 4.5, vx: 0, vy: 0, angle: 0 };
+    this.world.reveal(this.drone.x, this.drone.y, REVEAL_R + 4);
     this.hub = this.place('baliza', s.x, s.y, 0, true);
   }
 
@@ -47,7 +53,6 @@ export class Game {
   pay(cost) { for (const k in cost) this.inv[k] -= cost[k]; }
   refund(cost) { for (const k in cost) this.inv[k] = (this.inv[k] || 0) + cost[k]; }
 
-  // Devuelve { ok, reason, replace } sin colocar nada.
   check(type, x, y, dir, free = false) {
     const def = BUILDINGS[type];
     if (!def) return { ok: false, reason: 'Desconocido' };
@@ -57,7 +62,9 @@ export class Game {
     for (let j = 0; j < s; j++) {
       for (let i = 0; i < s; i++) {
         const tx = x + i, ty = y + j;
-        if (!this.world.buildable(tx, ty)) return { ok: false, reason: 'Terreno no válido' };
+        if (!this.world.inside(tx, ty)) return { ok: false, reason: 'Fuera del mapa' };
+        if (!free && !this.world.explored[this.world.idx(tx, ty)]) return { ok: false, reason: 'Zona sin explorar: acércate con el dron' };
+        if (!this.world.buildable(tx, ty) && !free) return { ok: false, reason: 'No se puede construir en el agua' };
         const e = this.entityAt(tx, ty);
         if (e) {
           const sameSpot = e.x === x && e.y === y && BUILDINGS[e.type].size === s;
@@ -67,24 +74,32 @@ export class Game {
         }
       }
     }
-    if (def.kind === 'miner' && !this.minerResource(x, y, s)) return { ok: false, reason: 'Ponlo sobre un recurso' };
+    if (def.kind === 'miner' && !this.minerTiles(x, y, s).length) return { ok: false, reason: 'El taladro va encima de un recurso' };
     if (!free && !(replace && replace.type === type)) {
       const cost = replace ? diffCost(def.cost, BUILDINGS[replace.type].cost) : def.cost;
-      if (!this.canAfford(cost)) return { ok: false, reason: 'Faltan materiales' };
+      if (!this.canAfford(cost)) return { ok: false, reason: 'Faltan materiales: ' + missing(this, cost) };
     }
     return { ok: true, replace };
   }
 
-  minerResource(x, y, s) {
+  // casillas de recurso bajo un taladro, del tipo más abundante
+  minerTiles(x, y, s) {
+    const w = this.world;
     const counts = [0, 0, 0, 0];
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
-      if (!this.world.inside(x + i, y + j)) continue;
-      counts[this.world.resource[this.world.idx(x + i, y + j)]]++;
+      if (!w.inside(x + i, y + j)) continue;
+      const k = w.idx(x + i, y + j);
+      if (w.amount[k] > 0) counts[w.resource[k]]++;
     }
     let best = 0;
-    for (let r = 1; r < 4; r++) if (counts[r] > counts[best] || best === 0) if (counts[r] > 0) best = r;
-    if (!best) return null;
-    return { res: best, coverage: counts[best] / (s * s) };
+    for (let r = 1; r < 4; r++) if (counts[r] > (best ? counts[best] : 0)) best = r;
+    if (!best) return [];
+    const out = [];
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
+      const k = w.idx(x + i, y + j);
+      if (w.resource[k] === best && w.amount[k] > 0) out.push(k);
+    }
+    return out;
   }
 
   place(type, x, y, dir, free = false) {
@@ -93,43 +108,54 @@ export class Game {
     const def = BUILDINGS[type];
     if (c.replace) {
       const old = c.replace;
-      if (old.type === type) { // solo girar una cinta
+      if (old.type === type) {
         old.dir = dir;
         this.orderDirty = true;
         this.emit('changed');
         return old;
       }
-      // mejora: se conserva el contenido y la orientación
       if (!free) { this.pay(def.cost); this.refund(BUILDINGS[old.type].cost); }
       old.type = type;
       old.def = def;
-      if (def.kind === 'miner') old.rate = def.rate * old.coverage;
       this.emit('changed');
       return old;
     }
     if (!free) this.pay(def.cost);
     const id = this.free.length ? this.free.pop() : this.ents.length;
-    const e = { id, type, def, kind: def.kind, x, y, dir, size: def.size };
+    const e = { id, type, def, kind: def.kind, x, y, dir, size: def.size, status: 'idle' };
     initEntity(e, this);
     this.ents[id] = e;
     for (let j = 0; j < e.size; j++) for (let i = 0; i < e.size; i++) this.grid[(y + j) * this.world.w + x + i] = id;
     if (e.kind === 'belt') { this.belts.push(e); this.orderDirty = true; }
     else this.machines.push(e);
+    if (!free) this.stats.built[type] = (this.stats.built[type] || 0) + 1;
     this.emit('changed');
     return e;
+  }
+
+  // Devuelve al inventario lo que tiene dentro (sin coste del edificio).
+  emptyInto(e) {
+    const inv = this.inv;
+    if (e.kind === 'belt') { for (const t of e.it) inv[ITEM_IDS[t]]++; e.it.length = 0; e.ip.length = 0; }
+    if (e.kind === 'chest') { for (const k in e.store) inv[k] += e.store[k]; e.store = {}; e.total = 0; }
+    if (e.kind === 'furnace') {
+      if (e.inType) inv[e.inType] += e.inCount;
+      if (e.outType) inv[e.outType] += e.outCount;
+      e.inType = null; e.inCount = 0; e.outCount = 0;
+    }
+    if (e.kind === 'crafter') {
+      for (const k in e.inb) inv[k] += e.inb[k];
+      for (const k in e.inb) e.inb[k] = 0;
+      if (e.recipe) inv[RECIPES[e.recipe].out] += e.outCount;
+      e.outCount = 0; e.progress = 0;
+    }
+    if ((e.kind === 'miner' || e.kind === 'splitter') && e.buf) { inv[e.buf]++; e.buf = null; }
   }
 
   remove(e) {
     if (!e || e.kind === 'hub') return false;
     this.refund(e.def.cost);
-    // Devolver contenido al inventario
-    if (e.kind === 'belt') for (const t of e.it) this.inv[ITEM_IDS[t]]++;
-    if (e.kind === 'chest') for (const k in e.store) this.inv[k] += e.store[k];
-    if (e.kind === 'furnace') {
-      if (e.inType) this.inv[e.inType] += e.inCount;
-      if (e.outType) this.inv[e.outType] += e.outCount;
-    }
-    if ((e.kind === 'miner' || e.kind === 'splitter') && e.buf) this.inv[e.buf]++;
+    this.emptyInto(e);
     for (let j = 0; j < e.size; j++) for (let i = 0; i < e.size; i++) this.grid[(e.y + j) * this.world.w + e.x + i] = -1;
     this.ents[e.id] = null;
     this.free.push(e.id);
@@ -137,6 +163,40 @@ export class Game {
     else this.machines.splice(this.machines.indexOf(e), 1);
     this.emit('changed');
     return true;
+  }
+
+  setRecipe(e, rid) {
+    if (e.kind !== 'crafter' || !RECIPES[rid] || RECIPES[rid].machine !== e.type) return;
+    this.emptyInto(e);
+    e.recipe = rid;
+    e.inb = Object.fromEntries(Object.keys(RECIPES[rid].in).map((k) => [k, 0]));
+    this.emit('changed');
+  }
+
+  // Extraer una unidad de una casilla (a mano o con taladro). Devuelve el objeto o null.
+  extract(k) {
+    const w = this.world;
+    if (w.amount[k] === 0) return null;
+    const item = RESOURCES[w.resource[k]].item;
+    w.amount[k]--;
+    this.depleted.add(k);
+    if (w.amount[k] === 0) {
+      w.resource[k] = 0;
+      this.emit('depleted', k);
+    }
+    return item;
+  }
+
+  handMine(x, y) {
+    const w = this.world;
+    if (!w.inside(x, y) || this.entityAt(x, y)) return null;
+    const k = w.idx(x, y);
+    const item = this.extract(k);
+    if (item) {
+      this.inv[item]++;
+      this.stats.mined[item] = (this.stats.mined[item] || 0) + 1;
+    }
+    return item;
   }
 
   // ---------- Hitos ----------
@@ -155,11 +215,10 @@ export class Game {
 
   // ---------- Transferencia de objetos ----------
 
-  // Intenta meter el objeto (id de texto) en la casilla tx,ty viajando en dirección travel.
   pushTo(tx, ty, item, travel) {
     const e = this.entityAt(tx, ty);
     if (!e) return false;
-    return accept(this, e, item, travel, tx, ty);
+    return accept(this, e, item, travel);
   }
 
   outputTile(e) {
@@ -172,7 +231,6 @@ export class Game {
     }
   }
 
-  // Ordena las cintas para procesar primero las de delante: así las líneas se compactan sin huecos.
   rebuildOrder() {
     const w = this.world.w;
     const depth = new Map();
@@ -218,7 +276,7 @@ export class Game {
         const nx = b.x + DX[b.dir], ny = b.y + DY[b.dir];
         if (nx >= 0 && ny >= 0 && nx < w && ny < this.world.h) {
           const id = this.grid[ny * w + nx];
-          if (id >= 0 && accept(this, this.ents[id], ITEM_IDS[b.it[0]], b.dir, nx, ny)) {
+          if (id >= 0 && accept(this, this.ents[id], ITEM_IDS[b.it[0]], b.dir)) {
             b.it.shift();
             ip.shift();
           }
@@ -240,15 +298,31 @@ export class Game {
       if (e.kind === 'belt') rec.push(e.it.map((t, i) => [t, +e.ip[i].toFixed(3)]));
       else if (e.kind === 'chest') rec.push(e.store);
       else if (e.kind === 'furnace') rec.push([e.inType, e.inCount, e.outType, e.outCount, e.progress]);
+      else if (e.kind === 'crafter') rec.push([e.recipe, e.inb, e.outCount, e.progress]);
       else if (e.kind === 'miner' || e.kind === 'splitter') rec.push(e.buf);
       ents.push(rec);
     }
-    return { v: 1, seed: this.world.seed, tick: this.tick, inv: this.inv, milestone: this.milestone, ents };
+    const w = this.world;
+    const dep = [];
+    for (const k of this.depleted) dep.push(k, w.amount[k]);
+    return {
+      v: 2, seed: w.seed, tick: this.tick, inv: this.inv, milestone: this.milestone, task: this.task,
+      stats: this.stats, drone: { x: this.drone.x, y: this.drone.y }, ents, dep, fog: packBits(w.explored),
+    };
   }
 
   static load(data) {
+    if (!data || data.v !== 2) throw new Error('versión de partida antigua');
     const g = new Game(data.seed);
     g.tick = data.tick || 0;
+    const w = g.world;
+    if (data.fog) unpackBits(data.fog, w.explored);
+    for (let i = 0; i < data.dep.length; i += 2) {
+      const k = data.dep[i];
+      w.amount[k] = data.dep[i + 1];
+      if (!w.amount[k]) w.resource[k] = 0;
+      g.depleted.add(k);
+    }
     for (let i = 1; i <= data.milestone; i++) {
       g.milestone = i;
       for (const u of MILESTONES[i].unlocks) g.unlocked.add(u);
@@ -259,10 +333,32 @@ export class Game {
       if (e.kind === 'belt') for (const [t, p] of extra) { e.it.push(t); e.ip.push(p); }
       else if (e.kind === 'chest') { e.store = extra; e.total = Object.values(extra).reduce((a, b) => a + b, 0); }
       else if (e.kind === 'furnace') [e.inType, e.inCount, e.outType, e.outCount, e.progress] = extra;
+      else if (e.kind === 'crafter') { g.setRecipe(e, extra[0]); Object.assign(e.inb, extra[1]); e.outCount = extra[2]; e.progress = extra[3]; }
       else e.buf = extra;
     }
     g.inv = Object.fromEntries(ITEM_IDS.map((id) => [id, data.inv[id] || 0]));
+    g.stats = data.stats || g.stats;
+    g.task = data.task || 0;
+    if (data.drone) Object.assign(g.drone, data.drone);
     return g;
+  }
+}
+
+function packBits(arr) {
+  let s = '';
+  for (let i = 0; i < arr.length; i += 8) {
+    let b = 0;
+    for (let j = 0; j < 8; j++) if (arr[i + j]) b |= 1 << j;
+    s += String.fromCharCode(b);
+  }
+  return btoa(s);
+}
+
+function unpackBits(str, arr) {
+  const s = atob(str);
+  for (let i = 0; i < s.length; i++) {
+    const b = s.charCodeAt(i);
+    for (let j = 0; j < 8; j++) if (i * 8 + j < arr.length) arr[i * 8 + j] = (b >> j) & 1;
   }
 }
 
@@ -272,18 +368,29 @@ function diffCost(a, b) {
   return out;
 }
 
+function missing(g, cost) {
+  return Object.entries(cost).filter(([k, v]) => (g.inv[k] || 0) < v)
+    .map(([k, v]) => `${v - (g.inv[k] || 0)} ${itemName(k)}`).join(', ');
+}
+let itemName = (k) => k;
+export function setItemNamer(fn) { itemName = fn; }
+
 function initEntity(e, g) {
   switch (e.kind) {
     case 'belt': e.it = []; e.ip = []; break;
     case 'miner': {
-      const r = g.minerResource(e.x, e.y, e.size);
-      e.item = RESOURCES[r.res].item;
-      e.coverage = r.coverage;
-      e.rate = e.def.rate * r.coverage;
-      e.progress = 0; e.buf = null; e.active = false;
+      const tiles = g.minerTiles(e.x, e.y, e.size);
+      e.res = g.world.resource[tiles[0]];
+      e.tiles = tiles;
+      e.item = RESOURCES[e.res].item;
+      e.progress = 0; e.buf = null; e.rr = 0;
       break;
     }
-    case 'furnace': e.inType = null; e.inCount = 0; e.outType = null; e.outCount = 0; e.progress = 0; e.active = false; break;
+    case 'furnace': e.inType = null; e.inCount = 0; e.outType = null; e.outCount = 0; e.progress = 0; break;
+    case 'crafter':
+      e.recipe = null; e.inb = {}; e.outCount = 0; e.progress = 0;
+      g.setRecipe(e, e.def.defaultRecipe);
+      break;
     case 'chest': e.store = {}; e.total = 0; break;
     case 'splitter': e.buf = null; e.rr = 0; break;
     case 'hub': break;
@@ -293,8 +400,7 @@ function initEntity(e, g) {
 function insertOnBelt(b, item, p) {
   const n = b.it.length;
   if (n >= MAX_ON_BELT) return false;
-  const t = ITEM_IDS.indexOf(item);
-  // posición ordenada de mayor a menor
+  const t = ITEM_NUM[item];
   let i = 0;
   while (i < n && b.ip[i] > p) i++;
   if (i > 0 && b.ip[i - 1] - p < GAP) return false;
@@ -307,16 +413,23 @@ function insertOnBelt(b, item, p) {
 function accept(g, e, item, travel) {
   switch (e.kind) {
     case 'belt': {
-      if ((travel + 2) % 4 === e.dir) return false; // de frente
+      if ((travel + 2) % 4 === e.dir) return false;
       return insertOnBelt(e, item, travel === e.dir ? 0 : 0.5);
     }
     case 'furnace': {
       const r = FURNACE_RECIPES[item];
       if (!r) return false;
       if (e.inType && e.inType !== item && e.inCount > 0) return false;
-      if (e.inCount >= FURNACE_BUF) return false;
+      if (e.inCount >= OUT_BUF) return false;
       if (e.outType && e.outType !== r.out && e.outCount > 0) return false;
       e.inType = item; e.inCount++;
+      return true;
+    }
+    case 'crafter': {
+      if (!e.recipe) return false;
+      const need = RECIPES[e.recipe].in[item];
+      if (!need || e.inb[item] >= need * 4) return false;
+      e.inb[item]++;
       return true;
     }
     case 'chest': {
@@ -331,7 +444,8 @@ function accept(g, e, item, travel) {
     }
     case 'hub': {
       g.inv[item]++;
-      g.delivered = (g.delivered || 0) + 1;
+      g.stats.delivered[item] = (g.stats.delivered[item] || 0) + 1;
+      g.emit('delivered', item);
       return true;
     }
     default: return false;
@@ -342,32 +456,66 @@ function updateMachine(g, e) {
   switch (e.kind) {
     case 'miner': {
       if (!e.buf) {
-        e.progress += e.rate / UPS;
-        if (e.progress >= 1) { e.progress -= 1; e.buf = e.item; }
-        e.active = true;
-      } else e.active = false;
+        let tiles = e.tiles;
+        if (tiles.length && g.world.amount[tiles[e.rr % tiles.length]] === 0) tiles = e.tiles = tiles.filter((k) => g.world.amount[k] > 0);
+        if (!tiles.length) { e.status = 'empty'; break; }
+        e.status = 'work';
+        e.progress += e.def.rate / UPS;
+        if (e.progress >= 1) {
+          e.progress -= 1;
+          e.rr = (e.rr + 1) % tiles.length;
+          e.buf = g.extract(tiles[e.rr]);
+        }
+      }
       if (e.buf) {
         const [tx, ty] = g.outputTile(e);
         if (g.pushTo(tx, ty, e.buf, e.dir)) e.buf = null;
+        else e.status = 'full';
       }
       break;
     }
     case 'furnace': {
       const r = e.inType && FURNACE_RECIPES[e.inType];
-      e.active = false;
-      if (r && e.inCount >= r.inCount && (e.outCount < FURNACE_BUF) && (!e.outType || e.outType === r.out || e.outCount === 0)) {
-        e.active = true;
-        e.progress += 1 / (r.time * UPS);
-        if (e.progress >= 1) {
-          e.progress = 0;
-          e.inCount -= r.inCount;
-          e.outType = r.out; e.outCount++;
-          if (e.inCount === 0) e.inType = null;
+      e.status = 'idle';
+      if (r && e.inCount >= r.inCount) {
+        if (e.outCount >= OUT_BUF || (e.outType && e.outType !== r.out && e.outCount > 0)) e.status = 'full';
+        else {
+          e.status = 'work';
+          e.progress += 1 / (r.time * UPS);
+          if (e.progress >= 1) {
+            e.progress = 0;
+            e.inCount -= r.inCount;
+            e.outType = r.out; e.outCount++;
+            if (e.inCount === 0) e.inType = null;
+          }
         }
       }
       if (e.outCount > 0) {
         const [tx, ty] = g.outputTile(e);
-        if (g.pushTo(tx, ty, e.outType, e.dir)) { e.outCount--; }
+        if (g.pushTo(tx, ty, e.outType, e.dir)) e.outCount--;
+        else if (e.status !== 'work') e.status = 'full';
+      }
+      break;
+    }
+    case 'crafter': {
+      const r = RECIPES[e.recipe];
+      e.status = 'idle';
+      if (!r) break;
+      let ready = true;
+      for (const k in r.in) if (e.inb[k] < r.in[k]) { ready = false; break; }
+      if (ready || e.progress > 0) {
+        if (e.outCount >= OUT_BUF) e.status = 'full';
+        else {
+          if (e.progress === 0) for (const k in r.in) e.inb[k] -= r.in[k];
+          e.status = 'work';
+          e.progress += 1 / (r.time * UPS);
+          if (e.progress >= 1) { e.progress = 0; e.outCount += r.n; }
+        }
+      }
+      if (e.outCount > 0) {
+        const [tx, ty] = g.outputTile(e);
+        if (g.pushTo(tx, ty, r.out, e.dir)) e.outCount--;
+        else if (e.status !== 'work') e.status = 'full';
       }
       break;
     }

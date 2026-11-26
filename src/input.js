@@ -59,7 +59,8 @@ export class Input {
     }
     this.mode = 'tap';
     this.mineTile = this.resourceAt(t.x, t.y) ? { x: t.x, y: t.y } : null;
-    this.mineTimer = 0;
+    this.mineTimer = 0.29;
+    this.mined = false;
   }
 
   move(e) {
@@ -74,6 +75,10 @@ export class Input {
     switch (this.mode) {
       case 'pan': this.pan(dx, dy); break;
       case 'tap':
+        if (this.mineTile && moved) {
+          // con el dedo sobre un recurso: seguir minando en la casilla bajo el dedo
+          if (this.resourceAt(t.x, t.y)) { this.mineTile = { x: t.x, y: t.y }; break; }
+        }
         if (moved) { this.mode = 'pan'; this.mineTile = null; this.pan(p.x - p.sx, p.y - p.sy); }
         break;
       case 'belt': this.beltStep(t.x, t.y); break;
@@ -96,7 +101,7 @@ export class Input {
     }
     if (!cancel) {
       const t = this.tileAt(e);
-      if (this.mode === 'tap') this.app.tap(t.x, t.y, this.mineTimer > 0);
+      if (this.mode === 'tap') this.app.tap(t.x, t.y, this.mined);
       if (this.mode === 'place' && p.type !== 'mouse') this.app.placeTool(t.x, t.y);
     }
     if (p.type !== 'mouse') { this.state.hover = null; this.app.updatePreview(); }
@@ -106,6 +111,7 @@ export class Input {
   }
 
   pan(dx, dy) {
+    this.app.freeCam = true;
     const z = this.r.cam.z;
     this.r.cam.x -= dx / z;
     this.r.cam.y -= dy / z;
@@ -163,23 +169,29 @@ export class Input {
   }
 
   update(dt) {
-    // minado a mano manteniendo pulsado
+    // minado a mano manteniendo pulsado (el dron tiene que estar cerca)
+    this.state.mining = null;
     if (this.mode === 'tap' && this.mineTile) {
-      this.mineTimer += dt;
-      while (this.mineTimer >= MINE_INTERVAL) {
-        this.mineTimer -= MINE_INTERVAL;
-        this.app.handMine(this.mineTile.x, this.mineTile.y);
-        this.mineTimer += 0.0001;
+      if (this.app.inMineRange(this.mineTile.x, this.mineTile.y)) {
+        this.state.mining = this.mineTile;
+        this.mineTimer += dt;
+        while (this.mineTimer >= MINE_INTERVAL) {
+          this.mineTimer -= MINE_INTERVAL;
+          if (!this.app.handMine(this.mineTile.x, this.mineTile.y)) { this.mineTile = null; break; }
+          this.mined = true;
+        }
+      } else {
+        this.app.hintMsg('Demasiado lejos: acerca el dron (WASD o joystick)', true);
+        this.mineTile = null;
       }
     }
-    // mover con teclado
-    const sp = (this.keys.has('shift') ? 1400 : 700) * dt / this.r.cam.z;
+    // mover el dron con teclado
     let mx = 0, my = 0;
     if (this.keys.has('w') || this.keys.has('arrowup')) my -= 1;
     if (this.keys.has('s') || this.keys.has('arrowdown')) my += 1;
     if (this.keys.has('a') || this.keys.has('arrowleft')) mx -= 1;
     if (this.keys.has('d') || this.keys.has('arrowright')) mx += 1;
-    if (mx || my) { this.r.cam.x += mx * sp; this.r.cam.y += my * sp; this.r.clampCam(); }
+    this.move = { x: mx, y: my, fast: this.keys.has('shift') };
   }
 
   key(e, down) {
@@ -192,6 +204,7 @@ export class Input {
     else if (k === 'x') this.app.toggleErase();
     else if (k === 'f3') { e.preventDefault(); this.app.toggleDebug(); }
     else if (k === 'h') this.app.openMilestones();
+    else if (k === 'c') this.app.freeCam = false;
     else if (k === '+' || k === '=') this.r.zoomAt(this.r.vw / 2, this.r.vh / 2, 1.2);
     else if (k === '-') this.r.zoomAt(this.r.vw / 2, this.r.vh / 2, 1 / 1.2);
     else {

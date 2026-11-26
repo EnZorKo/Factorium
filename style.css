@@ -81,3 +81,60 @@ canvas#game { position: fixed; inset: 0; touch-action: none; display: block; }
   .btn.big { width: 46px; height: 46px; }
   #hint { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 68px); }
 }
+
+/* ---------- v2: objetivo, minimapa, joystick, panel de máquina ---------- */
+#task { top: calc(max(10px, env(safe-area-inset-top)) + 40px); left: 10px; width: min(320px, 58vw);
+  background: var(--panel); border: 1px solid var(--panel-edge); border-left: 3px solid var(--teal); border-radius: 4px; padding: 8px 10px; }
+.task-head { display: flex; justify-content: space-between; align-items: center; color: var(--teal); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+.mini { background: none; border: 0; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
+#taskText { margin: 4px 0 6px; }
+#taskCount { color: var(--muted); font-size: 12px; margin-top: 3px; }
+#task.done { border-left-color: var(--good); animation: pop 0.5s; }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.05); } 100% { transform: scale(1); } }
+#task.collapsed #taskBody { display: none; }
+
+#minimap { top: calc(max(10px, env(safe-area-inset-top)) + 48px); right: 10px; width: 160px; height: 160px;
+  border: 2px solid var(--panel-edge); border-radius: 4px; image-rendering: pixelated; background: #000; touch-action: none; cursor: pointer; }
+#btnCenter { top: calc(max(10px, env(safe-area-inset-top)) + 214px); right: 10px; }
+
+#joy { display: none; left: 18px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 84px); width: 120px; height: 120px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(79,209,189,0.10), rgba(20,22,24,0.55)); border: 2px solid rgba(79,209,189,0.35); touch-action: none; }
+#joyKnob { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%;
+  background: linear-gradient(#e08a3c, #8a4a1c); box-shadow: 0 2px 6px rgba(0,0,0,0.6); pointer-events: none; }
+@media (pointer: coarse) { #joy { display: block; } }
+
+#sheet { right: 10px; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 70px); width: min(320px, 94vw);
+  background: #24272a; border: 1px solid var(--panel-edge); border-radius: 6px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); max-height: 60vh; overflow: auto; }
+#sheet .close { position: absolute; top: 8px; right: 8px; padding: 2px 9px; }
+#sheet h3 { margin: 0 0 4px; color: var(--accent); font-size: 17px; }
+#sheet .status { font-size: 13px; margin-bottom: 8px; }
+#sheet .slots { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; align-items: center; }
+#sheet .slot { display: flex; align-items: center; gap: 3px; background: #17191b; border: 1px solid #3a3e42; border-radius: 4px; padding: 3px 6px; font-weight: 600; font-variant-numeric: tabular-nums; }
+#sheet .slot img { width: 22px; height: 22px; }
+#sheet .arrow { color: var(--muted); }
+#sheet .recipes { display: grid; gap: 4px; margin: 8px 0; }
+#sheet .recipes .btn { text-align: left; display: flex; align-items: center; gap: 6px; padding: 5px 8px; font-weight: 500; }
+#sheet .recipes img { width: 20px; height: 20px; }
+#sheet .row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+#sheet .row .btn { flex: 1; }
+.st-work { color: var(--good); } .st-idle { color: #f2c14a; } .st-full { color: var(--bad); } .st-empty { color: var(--muted); }
+
+@media (max-width: 700px) {
+  #inv { max-width: calc(100vw - 120px); }
+  .chip { padding: 2px 6px 2px 3px; font-size: 13px; }
+  .chip img { width: 18px; height: 18px; }
+  #task { top: calc(max(10px, env(safe-area-inset-top)) + 64px); width: calc(100vw - 134px); font-size: 13px; padding: 6px 8px; }
+  #minimap { width: 100px; height: 100px; top: calc(max(10px, env(safe-area-inset-top)) + 48px); }
+  #btnCenter { top: calc(max(10px, env(safe-area-inset-top)) + 154px); padding: 6px 8px; }
+  #toolbar { left: 6px; right: 6px; transform: none; max-width: none; bottom: max(6px, env(safe-area-inset-bottom)); }
+  #actions { flex-direction: column; bottom: calc(max(6px, env(safe-area-inset-bottom)) + 70px); right: 8px; }
+  #joy { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 78px); left: 12px; width: 112px; height: 112px; }
+  #hint { bottom: calc(max(6px, env(safe-area-inset-bottom)) + 200px); font-size: 13px; }
+  #sheet { left: 6px; right: 6px; width: auto; bottom: calc(max(6px, env(safe-area-inset-bottom)) + 66px); }
+  #toast { top: auto; bottom: 46vh; }
+  #toast div { font-size: 13px; }
+}
+.pulse { animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(79,209,189,0.9); } 50% { box-shadow: 0 0 0 6px rgba(79,209,189,0); } }
+#sheet { z-index: 4; }
+@media (max-width: 700px) { body.sheet-open #actions, body.sheet-open #joy, body.sheet-open #hint { display: none !important; } }

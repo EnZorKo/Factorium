@@ -1,6 +1,6 @@
 // Dibujo con Canvas 2D: terreno en bloques cacheados, cintas y edificios con
 // recorte a lo visible y nivel de detalle según el zoom.
-import { TILE, BUILDINGS, UPS } from './config.js';
+import { TILE, BUILDINGS, UPS, RECIPES, MINE_RANGE } from './config.js';
 import { T_RUST, T_MARSH, T_WATER } from './world.js';
 import { S, BELT_FRAMES } from './sprites.js';
 import { fbm, hash2 } from './noise.js';
@@ -17,12 +17,17 @@ export class Renderer {
     this.sp = sprites;
     this.cam = { x: 0, y: 0, z: 1 };
     this.chunks = new Map();
+    this.ground = new Map();
+    this.particles = [];
+    this.floaters = [];
+    this.fogCanvas = document.createElement('canvas');
+    this.fogDirty = true;
     this.frame = 0;
     this.dpr = 1;
     this.resize();
   }
 
-  setGame(game) { this.game = game; this.chunks.clear(); }
+  setGame(game) { this.game = game; this.chunks.clear(); this.ground.clear(); this.fogDirty = true; this.miniDirty = true; this.particles = []; this.floaters = []; }
 
   resize() {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -58,9 +63,9 @@ export class Renderer {
   }
 
   // ---------- Terreno ----------
-  chunk(cx, cy) {
+  groundChunk(cx, cy) {
     const key = cy * 1000 + cx;
-    let c = this.chunks.get(key);
+    let c = this.ground.get(key);
     if (c) return c;
     if (this.budget <= 0) return null; // se genera en un frame posterior
     this.budget--;
@@ -118,8 +123,8 @@ export class Renderer {
       const h = hash2(gx, gy, seed + 5);
       const px = tx * TP + hash2(gx, gy, 1) * TP, py = ty * TP + hash2(gx, gy, 2) * TP;
       if (world.resource[i]) {
-        const res = world.resource[i];
-        x.drawImage(this.sp.res[res][(h * 8) | 0], tx * TP, ty * TP, TP, TP);
+        x.fillStyle = 'rgba(0,0,0,0.18)';
+        x.fillRect(tx * TP, ty * TP, TP, TP);
       } else if (h < 0.08) {
         x.fillStyle = 'rgba(20,18,16,0.55)';
         x.beginPath(); x.ellipse(px + 1, py + 1.5, 2.6, 1.8, 0, 0, 7); x.fill();
@@ -132,21 +137,85 @@ export class Renderer {
         }
       }
     }
+    this.ground.set(key, c);
+    return c;
+  }
+
+  // Bloque final = suelo + yacimientos (se recompone barato cuando uno se agota).
+  chunk(cx, cy) {
+    const key = cy * 1000 + cx;
+    let c = this.chunks.get(key);
+    if (c) return c;
+    const g = this.groundChunk(cx, cy);
+    if (!g) return null;
+    c = document.createElement('canvas');
+    c.width = c.height = CH * TP;
+    const x = c.getContext('2d');
+    x.drawImage(g, 0, 0);
+    const world = this.game.world;
+    for (let ty = 0; ty < CH; ty++) for (let tx = 0; tx < CH; tx++) {
+      const gx = cx * CH + tx, gy = cy * CH + ty;
+      if (!world.inside(gx, gy)) continue;
+      const i = world.idx(gx, gy);
+      const res = world.resource[i];
+      if (!res) continue;
+      x.globalAlpha = world.amount[i] < 120 ? 0.55 : 1;
+      x.drawImage(this.sp.res[res][(hash2(gx, gy, world.seed + 5) * 8) | 0], tx * TP, ty * TP, TP, TP);
+    }
+    x.globalAlpha = 1;
     this.chunks.set(key, c);
     return c;
   }
 
+  invalidateTile(k) {
+    const w = this.game.world;
+    const x = k % w.w, y = (k / w.w) | 0;
+    this.chunks.delete(((y / CH) | 0) * 1000 + ((x / CH) | 0));
+    this.miniDirty = true;
+  }
+
+  // ---------- Niebla ----------
+  updateFog() {
+    const w = this.game.world;
+    const c = this.fogCanvas;
+    if (c.width !== w.w) { c.width = w.w; c.height = w.h; }
+    const x = c.getContext('2d');
+    const img = x.createImageData(w.w, w.h);
+    const d = img.data;
+    for (let i = 0; i < w.explored.length; i++) {
+      const o = i * 4;
+      d[o] = 9; d[o + 1] = 11; d[o + 2] = 14;
+      d[o + 3] = w.explored[i] ? 0 : 244;
+    }
+    x.putImageData(img, 0, 0);
+    this.fogDirty = false;
+  }
+
+  // ---------- Efectos ----------
+  puff(x, y, kind) {
+    if (this.particles.length > 400) return;
+    const r = Math.random;
+    if (kind === 'smoke') this.particles.push({ x, y, vx: (r() - 0.5) * 6, vy: -10 - r() * 8, life: 1.6, max: 1.6, size: 5 + r() * 4, color: '120,115,110' });
+    else if (kind === 'dust') this.particles.push({ x, y, vx: (r() - 0.5) * 30, vy: (r() - 0.5) * 30, life: 0.6, max: 0.6, size: 2 + r() * 2, color: this.dustColor || '150,110,90' });
+    else if (kind === 'spark') this.particles.push({ x, y, vx: (r() - 0.5) * 70, vy: (r() - 0.5) * 70, life: 0.35, max: 0.35, size: 1.5, color: '255,200,110' });
+    else if (kind === 'beam') this.particles.push({ x, y, vx: (r() - 0.5) * 40, vy: -20 - r() * 30, life: 0.5, max: 0.5, size: 2.5, color: '120,240,220' });
+  }
+
+  floater(item, x, y) {
+    if (this.floaters.length > 30) return;
+    this.floaters.push({ item, x, y, t: 0 });
+  }
+
   // ---------- Frame ----------
-  draw(state, alpha = 0) {
+  draw(state, dt) {
     const { ctx, cam, game, sp } = this;
     const z = cam.z * this.dpr;
     this.frame++;
-    this.budget = this.chunks.size < 4 ? 4 : 1;
+    this.budget = this.ground.size < 4 ? 4 : 1;
     const W = this.canvas.width, H = this.canvas.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#0d0f10';
+    ctx.fillStyle = '#090b0e';
     ctx.fillRect(0, 0, W, H);
-    // transformación mundo -> pantalla
     const ox = W / 2 - cam.x * z, oy = H / 2 - cam.y * z;
     ctx.setTransform(z, 0, 0, z, ox, oy);
     ctx.imageSmoothingEnabled = true;
@@ -168,16 +237,27 @@ export class Renderer {
       }
     }
     const detail = cam.z >= 0.55;
-    // recursos nítidos de cerca
     if (cam.z >= 0.9) {
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-        const r = world.resource[y * world.w + x];
-        if (!r || game.grid[y * world.w + x] >= 0) continue;
+        const k = y * world.w + x;
+        const r = world.resource[k];
+        if (!r || game.grid[k] >= 0 || !world.explored[k]) continue;
+        if (world.amount[k] < 120) ctx.globalAlpha = 0.55;
         ctx.drawImage(sp.res[r][(hash2(x, y, world.seed + 5) * 8) | 0], x * TILE, y * TILE, TILE, TILE);
+        ctx.globalAlpha = 1;
       }
     }
 
-    // rejilla en modo construcción
+    // guía del tutorial sobre el terreno
+    if (state.guide) {
+      const g = state.guide;
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 250);
+      ctx.strokeStyle = `rgba(79,209,189,${0.5 + 0.5 * pulse})`;
+      ctx.lineWidth = 3 / cam.z;
+      const r = (1.2 + pulse * 0.4) * TILE;
+      ctx.beginPath(); ctx.arc((g.x + 0.5) * TILE, (g.y + 0.5) * TILE, r, 0, 7); ctx.stroke();
+    }
+
     if (state.tool && cam.z >= 0.7) {
       ctx.strokeStyle = 'rgba(0,0,0,0.22)';
       ctx.lineWidth = 1 / cam.z;
@@ -192,7 +272,6 @@ export class Renderer {
     const stamp = this.frame;
     const big = [];
     let beltCount = 0;
-    // pasada 1: cintas
     for (let y = y0; y <= y1; y++) {
       const row = y * gw;
       for (let x = x0; x <= x1; x++) {
@@ -217,7 +296,6 @@ export class Renderer {
         }
       }
     }
-    // pasada 2: objetos sobre cintas
     const isz = TILE * 0.5;
     for (let y = y0; y <= y1; y++) {
       const row = y * gw;
@@ -228,34 +306,112 @@ export class Renderer {
         if (e.kind !== 'belt' || e.it.length === 0) continue;
         const dx = DX[e.dir], dy = DY[e.dir];
         for (let i = 0; i < e.it.length; i++) {
-          let p = e.ip[i] - 0.5;
+          const p = e.ip[i] - 0.5;
           const cx = (x + 0.5 + dx * p) * TILE, cy = (y + 0.5 + dy * p) * TILE;
           if (detail) ctx.drawImage(sp.itemByIndex[e.it[i]], cx - isz / 2, cy - isz / 2, isz, isz);
           else { ctx.fillStyle = sp.itemColor[e.it[i]]; ctx.fillRect(cx - 6, cy - 6, 12, 12); }
         }
       }
     }
-    // pasada 3: edificios (sombra + sprite)
+    // edificios
+    const now = performance.now() / 1000;
     for (const e of big) {
       const s = e.size * TILE;
       const px = e.x * TILE, py = e.y * TILE;
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(px + 5, py + 7, s - 4, s - 4);
       ctx.drawImage(this.buildingSprite(e, t), px, py, s, s);
-      if (e.kind === 'furnace' && e.outCount > 0 && detail) {
-        ctx.drawImage(sp.items[e.outType], px + 2, py + 2, 18, 18);
+      // efectos de trabajo
+      if (e.status === 'work' && Math.random() < dt * 6) {
+        if (e.kind === 'furnace') this.puff(px + 14, py + 14, 'smoke');
+        else if (e.kind === 'miner') { this.dustColor = e.res === 2 ? '90,150,220' : e.res === 3 ? '220,170,70' : '170,95,70'; this.puff(px + s / 2, py + s / 2 - 6, 'dust'); }
+        else if (e.kind === 'crafter') this.puff(px + s / 2, py + s / 2, 'spark');
       }
-      if (e.kind === 'miner' && detail) {
-        ctx.drawImage(sp.items[e.item], px + s - 20, py + 2, 18, 18);
+      if (detail) {
+        // qué produce
+        let icon = null;
+        if (e.kind === 'miner') icon = e.item;
+        else if (e.kind === 'furnace') icon = e.outType || (e.inType && null);
+        else if (e.kind === 'crafter' && e.recipe) icon = RECIPES[e.recipe].out;
+        if (icon) {
+          ctx.fillStyle = 'rgba(15,17,19,0.75)';
+          ctx.beginPath(); ctx.arc(px + s - 12, py + 12, 10, 0, 7); ctx.fill();
+          ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
+        }
+        // luz de estado
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter') {
+          const col = e.status === 'work' ? '#5fe08a' : e.status === 'full' ? '#ff5a4a' : e.status === 'empty' ? '#8a8f95' : '#f2c14a';
+          const blink = e.status === 'full' || e.status === 'empty' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
+          ctx.globalAlpha = blink;
+          ctx.fillStyle = '#111';
+          ctx.beginPath(); ctx.arc(px + 9, py + s - 9, 5.5, 0, 7); ctx.fill();
+          ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(px + 9, py + s - 9, 3.8, 0, 7); ctx.fill();
+          ctx.globalAlpha = 1;
+        }
       }
-      if (state.tool && e.kind !== 'hub' && e.kind !== 'chest' && e.kind !== 'splitter') {
+      if (e.kind !== 'hub' && e.kind !== 'chest' && e.kind !== 'splitter' && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
-        this.arrow(tx, ty, e.dir, 'rgba(255,170,60,0.8)');
+        this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
       }
     }
     this.stats = { belts: beltCount, big: big.length };
 
-    // vista previa del edificio
+    // partículas
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.life -= dt;
+      if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      const a = p.life / p.max;
+      ctx.fillStyle = `rgba(${p.color},${a * 0.7})`;
+      const sz = p.size * (p.color === '120,115,110' ? 2 - a : 1);
+      ctx.beginPath(); ctx.arc(p.x, p.y, sz, 0, 7); ctx.fill();
+    }
+
+    // dron
+    const d = game.drone;
+    if (d) {
+      const dxp = d.x * TILE, dyp = d.y * TILE;
+      if (state.mining) {
+        const m = state.mining;
+        const mx = (m.x + 0.5) * TILE, my = (m.y + 0.5) * TILE;
+        ctx.strokeStyle = 'rgba(79,209,189,0.25)'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.moveTo(dxp, dyp); ctx.lineTo(mx, my); ctx.stroke();
+        ctx.strokeStyle = 'rgba(160,255,240,0.9)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(dxp, dyp); ctx.lineTo(mx + Math.sin(now * 40) * 3, my + Math.cos(now * 33) * 3); ctx.stroke();
+        if (Math.random() < dt * 25) this.puff(mx, my, 'beam');
+      }
+      const bob = Math.sin(now * 3) * 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath(); ctx.ellipse(dxp + 8, dyp + 14, 22, 16, 0, 0, 7); ctx.fill();
+      ctx.save();
+      ctx.translate(dxp, dyp + bob - 6);
+      ctx.rotate(d.angle);
+      ctx.drawImage(sp.drone[((now * 30) | 0) % 6], -24, -24, 48, 48);
+      ctx.restore();
+      // anillo de alcance de extracción mientras se busca recurso
+      if (state.showRange) {
+        ctx.strokeStyle = 'rgba(79,209,189,0.25)';
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.5 / cam.z;
+        ctx.beginPath(); ctx.arc(dxp, dyp, MINE_RANGE * TILE, 0, 7); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // niebla
+    if (this.fogDirty) this.updateFog();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'medium';
+    {
+      const fx0 = Math.max(0, x0 - 1), fy0 = Math.max(0, y0 - 1);
+      const fw = Math.min(world.w, x1 + 2) - fx0, fh = Math.min(world.h, y1 + 2) - fy0;
+      if (fw > 0 && fh > 0) ctx.drawImage(this.fogCanvas, fx0, fy0, fw, fh, fx0 * TILE, fy0 * TILE, fw * TILE, fh * TILE);
+    }
+
+    // vista previa
     if (state.preview) for (const g of state.preview) this.ghost(g);
     if (state.hover && state.erase) {
       const e = game.entityAt(state.hover.x, state.hover.y);
@@ -263,26 +419,64 @@ export class Renderer {
       if (e && e.kind !== 'hub') ctx.fillRect(e.x * TILE, e.y * TILE, e.size * TILE, e.size * TILE);
       else ctx.fillRect(state.hover.x * TILE, state.hover.y * TILE, TILE, TILE);
     }
-    // marco de selección al pasar el ratón
-    if (state.hover && !state.tool && !state.erase) {
+    const sel = state.selected;
+    if (sel && game.ents[sel.id] === sel) {
+      ctx.strokeStyle = 'rgba(79,209,189,0.95)';
+      ctx.lineWidth = 3 / cam.z;
+      this.corners(sel.x * TILE, sel.y * TILE, sel.size * TILE);
+    } else if (state.hover && !state.tool && !state.erase) {
       const e = game.entityAt(state.hover.x, state.hover.y);
       const hx = e ? e.x : state.hover.x, hy = e ? e.y : state.hover.y, hs = e ? e.size : 1;
       ctx.strokeStyle = 'rgba(255,200,90,0.9)';
       ctx.lineWidth = 2 / cam.z;
       this.corners(hx * TILE, hy * TILE, hs * TILE);
     }
+
+    // +1 al entregar en la Baliza
+    for (let i = this.floaters.length - 1; i >= 0; i--) {
+      const f = this.floaters[i];
+      f.t += dt;
+      if (f.t > 1.2) { this.floaters.splice(i, 1); continue; }
+      ctx.globalAlpha = 1 - f.t / 1.2;
+      ctx.drawImage(sp.items[f.item], f.x - 9, f.y - 30 * f.t - 9, 18, 18);
+      ctx.fillStyle = '#e4ded3';
+      ctx.font = 'bold 12px system-ui';
+      ctx.fillText('+1', f.x + 10, f.y - 30 * f.t + 4);
+      ctx.globalAlpha = 1;
+    }
+
+    // flecha en pantalla hacia el objetivo si está fuera de vista
+    if (state.guide) {
+      const gx = (state.guide.x + 0.5) * TILE * z + ox, gy = (state.guide.y + 0.5) * TILE * z + oy;
+      const m = 40 * this.dpr;
+      if (gx < m || gy < m || gx > W - m || gy > H - m) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const cx = W / 2, cy = H / 2;
+        const a = Math.atan2(gy - cy, gx - cx);
+        const rx = W / 2 - m - 30 * this.dpr, ry = H / 2 - m - 70 * this.dpr;
+        const k = Math.min(Math.abs(rx / Math.cos(a)), Math.abs(ry / Math.sin(a)));
+        ctx.translate(cx + Math.cos(a) * k, cy + Math.sin(a) * k);
+        ctx.rotate(a);
+        ctx.scale(this.dpr, this.dpr);
+        const pulse = 1 + 0.15 * Math.sin(now * 6);
+        ctx.scale(pulse, pulse);
+        ctx.fillStyle = 'rgba(79,209,189,0.95)';
+        ctx.strokeStyle = '#0d0f10'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(-10, -13); ctx.lineTo(-4, 0); ctx.lineTo(-10, 13); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      }
+    }
   }
 
   buildingSprite(e, t) {
     const sp = this.sp;
+    const on = e.status === 'work';
+    if (on) e._anim = (e._anim || 0) + 0.25;
+    const a = (e._anim || 0) | 0;
     switch (e.kind) {
-      case 'miner': {
-        const tier = e.type === 'taladro2' ? 2 : 1;
-        if (e.active) e._anim = (e._anim || 0) + e.rate * 0.35;
-        return sp.miner[tier][e.dir][((e._anim || 0) | 0) % 8];
-      }
-      case 'furnace':
-        return e.active ? sp.furnace.on[e.dir][((t * 8) | 0) % 6] : sp.furnace.off[e.dir];
+      case 'miner': return sp.miner[e.type === 'taladro2' ? 2 : 1][e.dir][a % 8];
+      case 'furnace': return on ? sp.furnace.on[e.dir][((t * 8) | 0) % 6] : sp.furnace.off[e.dir];
+      case 'crafter': return e.type === 'prensa' ? sp.press[e.dir][a % 8] : sp.assembler[e.dir][a % 12];
       case 'chest': return sp.chest;
       case 'splitter': return sp.splitter[e.dir];
       case 'hub': return sp.hub[((t * 6) | 0) % 12];
@@ -295,7 +489,7 @@ export class Renderer {
     const def = BUILDINGS[g.type];
     const s = def.size * TILE;
     ctx.globalAlpha = 0.6;
-    const fake = { kind: def.kind, type: g.type, dir: g.dir, active: false, rate: 0 };
+    const fake = { kind: def.kind, type: g.type, dir: g.dir, status: 'idle' };
     const img = def.kind === 'belt' ? sp.belt[g.type === 'cinta2' ? 2 : 1][g.dir][0] : this.buildingSprite(fake, 0);
     ctx.drawImage(img, g.x * TILE, g.y * TILE, s, s);
     ctx.globalAlpha = 1;
@@ -329,5 +523,43 @@ export class Renderer {
     ctx.moveTo(x + s, y + s - k); ctx.lineTo(x + s, y + s); ctx.lineTo(x + s - k, y + s);
     ctx.moveTo(x + k, y + s); ctx.lineTo(x, y + s); ctx.lineTo(x, y + s - k);
     ctx.stroke();
+  }
+
+  // ---------- Minimapa ----------
+  drawMinimap(mc, state) {
+    const w = this.game.world, g = this.game;
+    if (!this.miniBase || this.miniDirty) {
+      if (!this.miniBase) { this.miniBase = document.createElement('canvas'); this.miniBase.width = w.w; this.miniBase.height = w.h; }
+      const x = this.miniBase.getContext('2d');
+      const img = x.createImageData(w.w, w.h);
+      const d = img.data;
+      const cols = { 0: [70, 64, 58], 1: [98, 66, 52], 2: [48, 66, 68], 3: [18, 44, 60] };
+      const rc = { 1: [214, 96, 64], 2: [74, 158, 230], 3: [232, 177, 62] };
+      for (let i = 0; i < w.terrain.length; i++) {
+        const o = i * 4;
+        let c = w.explored[i] ? (w.resource[i] ? rc[w.resource[i]] : cols[w.terrain[i]]) : [12, 14, 17];
+        d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+      }
+      x.putImageData(img, 0, 0);
+      this.miniDirty = false;
+    }
+    const x = mc.getContext('2d');
+    if (mc.width !== w.w) { mc.width = w.w; mc.height = w.h; }
+    x.imageSmoothingEnabled = false;
+    x.drawImage(this.miniBase, 0, 0);
+    for (const e of g.ents) {
+      if (!e) continue;
+      x.fillStyle = e.kind === 'belt' ? '#9aa0a7' : e.kind === 'hub' ? '#4fd1bd' : '#e08a3c';
+      x.fillRect(e.x, e.y, e.size, e.size);
+    }
+    // vista actual
+    const z = this.cam.z;
+    const vw = this.vw / z / TILE, vh = this.vh / z / TILE;
+    x.strokeStyle = 'rgba(255,255,255,0.8)'; x.lineWidth = 1;
+    x.strokeRect(this.cam.x / TILE - vw / 2, this.cam.y / TILE - vh / 2, vw, vh);
+    const d = g.drone;
+    x.fillStyle = '#fff';
+    x.beginPath(); x.arc(d.x, d.y, 2.5, 0, 7); x.fill();
+    if (state.guide) { x.strokeStyle = '#4fd1bd'; x.beginPath(); x.arc(state.guide.x, state.guide.y, 4, 0, 7); x.stroke(); }
   }
 }

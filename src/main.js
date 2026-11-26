@@ -1,14 +1,21 @@
-// Arranque, bucle principal y la interfaz (HUD, barra de herramientas y paneles).
-import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, FURNACE_RECIPES, RESOURCES, TILE, UPS } from './config.js';
-import { Game } from './sim.js';
+// Arranque, bucle principal y la interfaz (HUD, dron, objetivos y paneles).
+import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE } from './config.js';
+import { Game, setItemNamer } from './sim.js';
 import { Renderer } from './render.js';
 import { Input } from './input.js';
 import { buildSprites, toolIcon } from './sprites.js';
 import { saveLocal, loadLocal, clearLocal, exportFile, readFile } from './save.js';
 
 const $ = (id) => document.getElementById(id);
-const AUTOSAVE_S = 60;
+const AUTOSAVE_S = 30;
 const DIR_NAMES = ['→', '↓', '←', '↑'];
+const STATUS_TEXT = {
+  work: ['st-work', 'Trabajando'],
+  idle: ['st-idle', 'Esperando material'],
+  full: ['st-full', 'Salida atascada: conecta una cinta o máquina donde apunta la flecha'],
+  empty: ['st-empty', 'Yacimiento agotado: muévelo a otra veta'],
+};
+setItemNamer((k) => ITEMS[k].name);
 
 class App {
   constructor() {
@@ -16,20 +23,24 @@ class App {
     this.itemImg = Object.fromEntries(ITEM_IDS.map((id) => [id, this.sprites.items[id].toDataURL()]));
     this.toolImg = {};
     for (const id of Object.keys(BUILDINGS)) if (!BUILDINGS[id].hidden) this.toolImg[id] = toolIcon(this.sprites, id);
-    this.state = { tool: null, dir: 0, erase: false, hover: null, preview: null };
+    this.state = { tool: null, dir: 0, erase: false, hover: null, preview: null, guide: null, selected: null, mining: null };
+    this.joy = { x: 0, y: 0 };
+    this.freeCam = false;
     const params = new URLSearchParams(location.search);
     this.bench = parseInt(params.get('bench') || '0', 10);
     const saved = this.bench ? null : loadLocal();
     let game = null;
-    if (saved) { try { game = Game.load(saved); } catch (e) { console.warn('Partida dañada, empiezo nueva', e); } }
-    this.setGame(game || new Game());
-    this.renderer = new Renderer($('game'), this.game, this.sprites);
-    this.centerOnHub();
+    if (saved) { try { game = Game.load(saved); } catch (e) { console.warn('Partida antigua o dañada, empiezo nueva', e); } }
+    this.renderer = new Renderer($('game'), game || new Game(), this.sprites);
+    this.setGame(this.renderer.game);
     this.input = new Input($('game'), this);
     if (this.bench) this.buildBench(this.bench);
     this.bindUI();
+    this.bindJoystick();
+    this.bindMinimap();
     this.buildToolbar();
     this.refreshInv();
+    this.refreshTask(true);
     this.lastSave = performance.now();
     this.acc = 0;
     this.last = performance.now();
@@ -38,42 +49,50 @@ class App {
     const flush = () => { if (!this.bench) saveLocal(this.game); };
     document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
     window.addEventListener('pagehide', flush);
-    if (!saved && !this.bench) this.toast('Has aterrizado en Veyra. Mantén pulsado un recurso para extraer a mano, o elige un edificio abajo.');
+    if (!game && !this.bench) this.openWelcome();
     requestAnimationFrame((t) => this.loop(t));
-    window.factorium = this; // útil para depurar
+    window.factorium = this;
   }
 
   setGame(g) {
     this.game = g;
     g.on((type, data) => {
       if (type === 'changed') this.invDirty = true;
-      if (type === 'milestone') {
-        this.toast(`Hito completado: ${data.name}`);
+      else if (type === 'milestone') {
+        this.toast(`Hito completado: ${data.name}. ¡Nuevos edificios abajo!`);
         this.buildToolbar(data.unlocks);
-      }
+      } else if (type === 'delivered') {
+        const now = performance.now();
+        if (!this._lastFloat || now - this._lastFloat > 140) {
+          this._lastFloat = now;
+          const h = g.hub;
+          this.renderer.floater(data, (h.x + 1.5 + (Math.random() - 0.5)) * TILE, (h.y + 1) * TILE);
+        }
+      } else if (type === 'depleted') this.renderer.invalidateTile(data);
     });
-    if (this.renderer) { this.renderer.setGame(g); this.centerOnHub(); }
-  }
-
-  centerOnHub() {
-    const h = this.game.hub;
-    this.renderer.cam.x = (h.x + 1.5) * TILE;
-    this.renderer.cam.y = (h.y + 1.5) * TILE;
-    this.renderer.cam.z = window.innerWidth < 700 ? 0.8 : 1.1;
+    if (this.renderer.game !== g) this.renderer.setGame(g);
+    this.freeCam = false;
+    const d = g.drone;
+    this.renderer.cam.x = d.x * TILE;
+    this.renderer.cam.y = d.y * TILE;
+    this.renderer.cam.z = window.innerWidth < 700 ? 0.85 : 1.1;
+    this.closeSheet();
   }
 
   // ---------- Bucle ----------
   loop(now) {
-    const dt = Math.min(0.25, (now - this.last) / 1000);
+    const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.input.update(dt);
+    this.updateDrone(dt);
     this.acc += dt;
     const t0 = performance.now();
     let steps = 0;
     while (this.acc >= 1 / UPS && steps < 6) { this.game.step(); this.acc -= 1 / UPS; steps++; }
-    if (steps === 6) this.acc = 0; // si el equipo va justo, se ralentiza en vez de bloquearse
+    if (steps === 6) this.acc = 0;
     const t1 = performance.now();
-    this.renderer.draw(this.state);
+    this.state.showRange = !!this.input.mineTile || (this.game.task < 1);
+    this.renderer.draw(this.state, dt);
     const t2 = performance.now();
     const f = this.fps;
     f.frames++; f.steps += steps; f.simMs += t1 - t0; f.drawMs += t2 - t1; f.t += dt;
@@ -82,10 +101,53 @@ class App {
       f.sim = f.simMs / f.frames; f.draw = f.drawMs / f.frames;
       f.frames = f.steps = f.simMs = f.drawMs = f.t = 0;
       if (!$('debug').classList.contains('hidden')) this.updateDebug();
+      this.refreshTask();
+      if (this.state.selected) this.renderSheet();
     }
-    if (this.invDirty || (this.game.tick % 15 === 0 && steps)) { this.refreshInv(); this.invDirty = false; }
+    if (this.renderer.frame % 8 === 0) this.renderer.drawMinimap($('minimap'), this.state);
+    if (this.invDirty || this.renderer.frame % 15 === 0) { this.refreshInv(); this.invDirty = false; }
     if (!this.bench && now - this.lastSave > AUTOSAVE_S * 1000) { saveLocal(this.game); this.lastSave = now; }
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  updateDrone(dt) {
+    const d = this.game.drone;
+    const m = this.input.move || { x: 0, y: 0 };
+    let mx = m.x + this.joy.x, my = m.y + this.joy.y;
+    const len = Math.hypot(mx, my);
+    if (len > 1) { mx /= len; my /= len; }
+    const speed = m.fast ? 13 : 8;
+    // inercia suave
+    d.vx += (mx * speed - d.vx) * Math.min(1, dt * 8);
+    d.vy += (my * speed - d.vy) * Math.min(1, dt * 8);
+    const w = this.game.world;
+    d.x = Math.max(0.5, Math.min(w.w - 0.5, d.x + d.vx * dt));
+    d.y = Math.max(0.5, Math.min(w.h - 0.5, d.y + d.vy * dt));
+    if (Math.hypot(d.vx, d.vy) > 0.5) {
+      const target = Math.atan2(d.vy, d.vx);
+      let diff = target - d.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      d.angle += diff * Math.min(1, dt * 10);
+    }
+    if (len > 0.1) this.freeCam = false;
+    const tx = d.x | 0, ty = d.y | 0;
+    if (tx !== this._rx || ty !== this._ry) {
+      this._rx = tx; this._ry = ty;
+      if (w.reveal(d.x, d.y, REVEAL_R)) { this.renderer.fogDirty = true; this.renderer.miniDirty = true; }
+    }
+    const cam = this.renderer.cam;
+    if (!this.freeCam) {
+      const k = Math.min(1, dt * 6);
+      cam.x += (d.x * TILE - cam.x) * k;
+      cam.y += (d.y * TILE - cam.y) * k;
+    }
+    $('btnCenter').classList.toggle('hidden', !this.freeCam);
+  }
+
+  inMineRange(x, y) {
+    const d = this.game.drone;
+    return Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) <= MINE_RANGE;
   }
 
   updateDebug() {
@@ -101,7 +163,7 @@ class App {
   selectTool(id) {
     this.state.tool = id;
     this.state.erase = false;
-    if (id && BUILDINGS[id].kind !== 'belt' && this.state.dir == null) this.state.dir = 0;
+    if (id) this.closeSheet();
     this.syncButtons();
     this.updatePreview();
     this.hoverInfo();
@@ -109,28 +171,32 @@ class App {
 
   toggleErase() {
     this.state.erase = !this.state.erase;
-    if (this.state.erase) this.state.tool = null;
+    if (this.state.erase) { this.state.tool = null; this.closeSheet(); }
     this.syncButtons();
     this.updatePreview();
     this.hoverInfo();
   }
 
   rotate(d = 1) {
+    const sel = this.state.selected;
+    if (!this.state.tool && sel) { this.rotateEntity(sel, d); return; }
     this.state.dir = (this.state.dir + d + 4) % 4;
-    // sin herramienta: girar lo que hay bajo el cursor
     if (!this.state.tool && this.state.hover) {
       const e = this.game.entityAt(this.state.hover.x, this.state.hover.y);
-      if (e && e.kind !== 'hub') {
-        e.dir = (e.dir + d + 4) % 4;
-        this.game.orderDirty = true;
-      }
+      if (e) this.rotateEntity(e, d);
     }
     this.updatePreview();
+    this.hoverInfo();
+  }
+
+  rotateEntity(e, d) {
+    if (e.kind === 'hub') return;
+    e.dir = (e.dir + d + 4) % 4;
+    this.game.orderDirty = true;
   }
 
   originFor(type, x, y) {
-    const s = BUILDINGS[type].size;
-    const o = (s - 1) >> 1;
+    const o = (BUILDINGS[type].size - 1) >> 1;
     return { x: x - o, y: y - o };
   }
 
@@ -140,52 +206,48 @@ class App {
     const o = this.originFor(type, x, y);
     const c = this.game.check(type, o.x, o.y, this.state.dir);
     if (!c.ok) {
-      if (!silent || c.reason === 'Faltan materiales') this.hintMsg(c.reason, true);
+      if (!silent || c.reason.startsWith('Faltan')) this.hintMsg(c.reason, true);
       return;
     }
-    this.game.place(type, o.x, o.y, this.state.dir);
+    const e = this.game.place(type, o.x, o.y, this.state.dir);
+    if (e) {
+      for (let i = 0; i < 6; i++) this.renderer.puff((o.x + e.size / 2) * TILE, (o.y + e.size / 2) * TILE, 'dust');
+      if (this.moving && this.moving === type) { this.moving = null; this.selectTool(null); }
+    }
     this.invDirty = true;
   }
 
   erase(x, y) {
     const e = this.game.entityAt(x, y);
-    if (e && this.game.remove(e)) this.invDirty = true;
+    if (e && this.game.remove(e)) {
+      if (this.state.selected === e) this.closeSheet();
+      this.invDirty = true;
+    }
   }
 
   handMine(x, y) {
-    const w = this.game.world;
-    if (!w.inside(x, y) || this.game.entityAt(x, y)) return;
-    const r = w.resource[w.idx(x, y)];
-    if (!r) return;
-    const item = RESOURCES[r].item;
-    this.game.inv[item]++;
+    const item = this.game.handMine(x, y);
+    if (!item) return null;
     this.invDirty = true;
     this.flashChip(item);
+    const d = this.game.drone;
+    this.renderer.floater(item, d.x * TILE, d.y * TILE - 20);
+    return item;
   }
 
   tap(x, y, mined) {
     const e = this.game.entityAt(x, y);
     if (!e) {
-      if (!mined) this.handMine(x, y);
+      this.closeSheet();
+      const w = this.game.world;
+      if (!mined && w.inside(x, y) && w.resource[w.idx(x, y)] && !this.inMineRange(x, y)) {
+        this.hintMsg('Demasiado lejos: acerca el dron (WASD o joystick)', true);
+      }
       return;
     }
     if (e.kind === 'hub') { this.openMilestones(); return; }
-    if (e.kind === 'chest') {
-      const n = e.total;
-      for (const k in e.store) this.game.inv[k] += e.store[k];
-      e.store = {}; e.total = 0;
-      this.invDirty = true;
-      this.toast(n ? `Recogidos ${n} objetos de la caja` : 'La caja está vacía');
-      return;
-    }
-    if (e.kind === 'furnace' && e.outCount > 0) {
-      this.game.inv[e.outType] += e.outCount;
-      this.toast(`Recogidos ${e.outCount} × ${ITEMS[e.outType].name}`);
-      e.outCount = 0;
-      this.invDirty = true;
-      return;
-    }
-    this.hintHtml(this.entityInfo(e));
+    this.state.selected = e;
+    this.renderSheet();
   }
 
   updatePreview() {
@@ -194,6 +256,159 @@ class App {
     const o = this.originFor(s.tool, s.hover.x, s.hover.y);
     const c = this.game.check(s.tool, o.x, o.y, s.dir);
     s.preview = [{ type: s.tool, x: o.x, y: o.y, dir: s.dir, ok: c.ok }];
+  }
+
+  // ---------- Panel de máquina ----------
+  slot(item, n) { return `<span class="slot"><img src="${this.itemImg[item]}" alt="">${n}</span>`; }
+
+  renderSheet() {
+    const e = this.state.selected;
+    if (!e || this.game.ents[e.id] !== e) { this.closeSheet(); return; }
+    const d = BUILDINGS[e.type];
+    const st = STATUS_TEXT[e.status];
+    let h = `<h3>${d.name} ${DIR_NAMES[e.dir]}</h3>`;
+    if (st && e.kind !== 'chest' && e.kind !== 'belt' && e.kind !== 'splitter') h += `<div class="status ${st[0]}">● ${st[1]}</div>`;
+    switch (e.kind) {
+      case 'miner': {
+        const w = this.game.world;
+        let left = 0;
+        for (const k of e.tiles) left += w.amount[k];
+        h += `<div class="slots">Extrae ${this.slot(e.item, (d.rate * 60).toFixed(0) + '/min')}</div>`;
+        h += `<div class="help">Quedan <b>${left}</b> unidades en el yacimiento bajo el taladro.</div>`;
+        break;
+      }
+      case 'furnace': {
+        h += '<div class="slots">';
+        h += e.inType ? this.slot(e.inType, e.inCount) : '<span class="slot">vacío</span>';
+        h += '<span class="arrow">→</span>';
+        h += e.outCount ? this.slot(e.outType, e.outCount) : '<span class="slot">—</span>';
+        h += '</div><div class="help">Ferrita → Lingote férrico · Cobalina → Lingote de cobalina · 3 Musgo → Pastilla</div>';
+        break;
+      }
+      case 'crafter': {
+        const r = RECIPES[e.recipe];
+        h += '<div class="slots">';
+        h += Object.entries(r.in).map(([k, v]) => this.slot(k, `${e.inb[k]}/${v}`)).join('');
+        h += `<span class="arrow">→</span>${this.slot(r.out, e.outCount)}</div>`;
+        h += `<div class="bar"><i style="width:${(e.progress * 100) | 0}%"></i></div>`;
+        h += '<div class="recipes">';
+        for (const [rid, rr] of Object.entries(RECIPES)) {
+          if (rr.machine !== e.type) continue;
+          const ins = Object.entries(rr.in).map(([k, v]) => `${v} ${ITEMS[k].name}`).join(' + ');
+          h += `<button class="btn ${rid === e.recipe ? 'active' : ''}" data-recipe="${rid}"><img src="${this.itemImg[rr.out]}" alt="">${rr.n > 1 ? rr.n + ' ' : ''}${ITEMS[rr.out].name} <small>(${ins}, ${rr.time}s)</small></button>`;
+        }
+        h += '</div>';
+        break;
+      }
+      case 'chest': {
+        const list = Object.entries(e.store).filter(([, v]) => v > 0);
+        h += `<div class="status">${e.total}/${d.capacity}</div><div class="slots">${list.map(([k, v]) => this.slot(k, v)).join('') || 'vacía'}</div>`;
+        break;
+      }
+      case 'belt': h += `<div class="help">${(d.speed * 60).toFixed(0)} objetos por minuto. Las cintas pueden recibir por los lados.</div>`; break;
+      case 'splitter': h += `<div class="help">Lo que entra por detrás sale por delante, izquierda y derecha, por turnos.</div>`; break;
+    }
+    const canCollect = (e.kind === 'chest' && e.total) || (e.kind === 'furnace' && e.outCount) || (e.kind === 'crafter' && e.outCount);
+    h += `<div class="row">${canCollect ? '<button class="btn primary" data-act="collect">Recoger</button>' : ''}
+      <button class="btn" data-act="rotate">⟳ Girar</button><button class="btn" data-act="move">✥ Mover</button><button class="btn" data-act="delete">✖ Quitar</button></div>`;
+    const body = $('sheetBody');
+    if (body.innerHTML !== h) body.innerHTML = h;
+    $('sheet').classList.remove('hidden');
+    document.body.classList.add('sheet-open');
+    body.onclick = (ev) => {
+      const b = ev.target.closest('button');
+      if (!b) return;
+      if (b.dataset.recipe) { this.game.setRecipe(e, b.dataset.recipe); this.invDirty = true; }
+      const act = b.dataset.act;
+      if (act === 'collect') {
+        const before = { ...this.game.inv };
+        if (e.kind === 'chest') { for (const k in e.store) this.game.inv[k] += e.store[k]; e.store = {}; e.total = 0; }
+        else if (e.kind === 'furnace') { this.game.inv[e.outType] += e.outCount; e.outCount = 0; }
+        else if (e.kind === 'crafter') { this.game.inv[RECIPES[e.recipe].out] += e.outCount; e.outCount = 0; }
+        const got = ITEM_IDS.reduce((a, k) => a + this.game.inv[k] - before[k], 0);
+        this.toast(`Recogidos ${got} objetos`);
+        this.invDirty = true;
+      }
+      if (act === 'rotate') this.rotateEntity(e, 1);
+      if (act === 'delete') { this.game.remove(e); this.closeSheet(); return; }
+      if (act === 'move') {
+        const type = e.type, dir = e.dir;
+        this.game.remove(e);
+        this.closeSheet();
+        this.selectTool(type);
+        this.state.dir = dir;
+        this.moving = type;
+        this.toast('Toca donde quieras ponerlo');
+        return;
+      }
+      this.renderSheet();
+    };
+  }
+
+  closeSheet() {
+    this.state.selected = null;
+    const s = $('sheet');
+    if (s) s.classList.add('hidden');
+    document.body.classList.remove('sheet-open');
+  }
+
+  // ---------- Objetivos ----------
+  refreshTask(force = false) {
+    const g = this.game;
+    const task = TASKS[g.task];
+    if (!task) {
+      $('taskNum').textContent = 'Fase 1 completada';
+      $('taskText').textContent = '¡Has montado tu primera fábrica en Veyra! Sigue ampliándola; la fase 2 traerá electricidad y nuevas máquinas.';
+      $('taskBar').style.width = '100%';
+      $('taskCount').textContent = '';
+      this.state.guide = null;
+      this.highlight(null);
+      return;
+    }
+    const [cur, goal] = task.goal(g.stats, g);
+    if (cur >= goal) {
+      g.refund(task.reward);
+      const rw = Object.entries(task.reward).map(([k, v]) => `${v} ${ITEMS[k].name}`).join(', ');
+      this.toast(`✔ Objetivo cumplido${rw ? ' · Recompensa: ' + rw : ''}`);
+      g.task++;
+      $('task').classList.remove('done'); void $('task').offsetWidth; $('task').classList.add('done');
+      this.invDirty = true;
+      if (!this.bench) saveLocal(g);
+      this.refreshTask(true);
+      return;
+    }
+    $('taskNum').textContent = `Objetivo ${g.task + 1} de ${TASKS.length}`;
+    if ($('taskText').textContent !== task.text) $('taskText').textContent = task.text;
+    $('taskBar').style.width = `${Math.min(100, (cur / goal) * 100)}%`;
+    $('taskCount').textContent = `${Math.min(cur, goal)} / ${goal}`;
+    // guía
+    const now = performance.now();
+    if (task.target && (force || !this._gt || now - this._gt > 800)) {
+      this._gt = now;
+      this.state.guide = this.nearestResource(task.target);
+    } else if (!task.target) this.state.guide = null;
+    this.highlight(task.milestone ? 'btnMilestones' : task.tool ? `tool-${task.tool}` : null);
+  }
+
+  highlight(id) {
+    if (this._hl === id) return;
+    document.querySelectorAll('.pulse').forEach((el) => el.classList.remove('pulse'));
+    this._hl = id;
+    if (!id) return;
+    const el = id.startsWith('tool-') ? document.querySelector(`.tool[data-id="${id.slice(5)}"]`) : $(id);
+    if (el) el.classList.add('pulse');
+  }
+
+  nearestResource(type) {
+    const w = this.game.world, d = this.game.drone;
+    let best = null, bd = Infinity;
+    for (let y = 0; y < w.h; y += 1) for (let x = 0; x < w.w; x += 1) {
+      const k = y * w.w + x;
+      if (w.resource[k] !== type || this.game.grid[k] >= 0) continue;
+      const dd = (x - d.x) ** 2 + (y - d.y) ** 2;
+      if (dd < bd) { bd = dd; best = { x, y }; }
+    }
+    return best;
   }
 
   // ---------- Textos de ayuda ----------
@@ -205,49 +420,35 @@ class App {
     return parts.join(' · ') || 'gratis';
   }
 
-  entityInfo(e) {
-    const d = BUILDINGS[e.type];
-    switch (e.kind) {
-      case 'miner': return `<b>${d.name}</b> · extrae ${ITEMS[e.item].name} · ${(e.rate * 60).toFixed(0)}/min ${DIR_NAMES[e.dir]}`;
-      case 'furnace': {
-        const inn = e.inType ? `${e.inCount} ${ITEMS[e.inType].name}` : 'vacío';
-        const out = e.outCount ? ` → ${e.outCount} ${ITEMS[e.outType].name} (toca para recoger)` : '';
-        return `<b>Horno</b> · ${inn}${out}`;
-      }
-      case 'chest': return `<b>Caja</b> · ${e.total}/${d.capacity} · toca para recoger`;
-      case 'belt': return `<b>${d.name}</b> · ${(d.speed * 60).toFixed(0)} objetos/min`;
-      case 'splitter': return `<b>Divisor</b> · reparte en 3 salidas`;
-      case 'hub': return `<b>Baliza de aterrizaje</b> · lo que entra va a tu inventario · toca para ver hitos`;
-    }
-    return d.name;
-  }
-
   hoverInfo() {
     const s = this.state;
-    if (s.erase) { this.hintHtml('Modo borrar: toca o arrastra sobre edificios. Se devuelve todo el material.'); return; }
+    if (s.erase) { this.hintHtml('Modo quitar: toca o arrastra sobre edificios. Recuperas todo el material.'); return; }
     if (s.tool) {
       const d = BUILDINGS[s.tool];
       this.hintHtml(`<b>${d.name}</b> ${DIR_NAMES[s.dir]} · ${d.desc} <span class="cost">· ${this.costHtml(d.cost)}</span>`);
       return;
     }
     if (!s.hover) { this.hintHtml(''); return; }
-    const e = this.game.entityAt(s.hover.x, s.hover.y);
-    if (e) { this.hintHtml(this.entityInfo(e)); return; }
     const w = this.game.world;
     if (w.inside(s.hover.x, s.hover.y)) {
-      const r = w.resource[w.idx(s.hover.x, s.hover.y)];
-      if (r) { this.hintHtml(`<b>${RESOURCES[r].name}</b> · mantén pulsado para extraer a mano, o pon un taladro encima`); return; }
+      const k = w.idx(s.hover.x, s.hover.y);
+      if (!w.explored[k]) { this.hintHtml('Zona sin explorar'); return; }
+      const e = this.game.entityAt(s.hover.x, s.hover.y);
+      if (e) { this.hintHtml(`<b>${BUILDINGS[e.type].name}</b> · toca para ver detalles`); return; }
+      const r = w.resource[k];
+      if (r) { this.hintHtml(`<b>${RESOURCES[r].name}</b> · quedan ${w.amount[k]} · mantén pulsado para extraer o pon un taladro`); return; }
     }
     this.hintHtml('');
   }
 
   hintHtml(h) { if (this._hint !== h) { $('hint').innerHTML = h; this._hint = h; } }
-  hintMsg(text, bad) { this.hintHtml(bad ? `<span class="bad">${text}</span>` : text); clearTimeout(this._ht); this._ht = setTimeout(() => this.hoverInfo(), 1400); }
+  hintMsg(text, bad) { this.hintHtml(bad ? `<span class="bad">${text}</span>` : text); clearTimeout(this._ht); this._ht = setTimeout(() => this.hoverInfo(), 1800); }
 
   toast(text) {
     const d = document.createElement('div');
     d.textContent = text;
     $('toast').appendChild(d);
+    while ($('toast').children.length > 3) $('toast').firstChild.remove();
     setTimeout(() => d.remove(), 3000);
   }
 
@@ -255,10 +456,16 @@ class App {
   bindUI() {
     $('btnRotate').onclick = () => this.rotate(1);
     $('btnErase').onclick = () => this.toggleErase();
-    $('btnCancel').onclick = () => this.selectTool(null);
+    $('btnCancel').onclick = () => { this.moving = null; this.selectTool(null); };
     $('btnMilestones').onclick = () => this.openMilestones();
     $('btnMenu').onclick = () => this.openMenu();
+    $('btnCenter').onclick = () => { this.freeCam = false; };
     $('panelClose').onclick = () => this.closePanel();
+    $('sheetClose').onclick = () => this.closeSheet();
+    $('taskToggle').onclick = () => {
+      $('task').classList.toggle('collapsed');
+      $('taskToggle').textContent = $('task').classList.contains('collapsed') ? '+' : '–';
+    };
     $('panel').addEventListener('pointerdown', (e) => { if (e.target.id === 'panel') this.closePanel(); });
     $('importFile').addEventListener('change', async (e) => {
       const f = e.target.files[0];
@@ -277,6 +484,43 @@ class App {
     });
   }
 
+  bindJoystick() {
+    const pad = $('joy'), knob = $('joyKnob');
+    let id = null;
+    const set = (e) => {
+      const r = pad.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let dx = e.clientX - cx, dy = e.clientY - cy;
+      const max = r.width / 2 - 10;
+      const l = Math.hypot(dx, dy);
+      if (l > max) { dx = (dx / l) * max; dy = (dy / l) * max; }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      const nx = dx / max, ny = dy / max;
+      const dead = Math.hypot(nx, ny) < 0.15;
+      this.joy.x = dead ? 0 : nx; this.joy.y = dead ? 0 : ny;
+    };
+    pad.addEventListener('pointerdown', (e) => { id = e.pointerId; pad.setPointerCapture(id); set(e); e.preventDefault(); });
+    pad.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
+    const end = (e) => { if (e.pointerId !== id) return; id = null; this.joy.x = this.joy.y = 0; knob.style.transform = ''; };
+    pad.addEventListener('pointerup', end);
+    pad.addEventListener('pointercancel', end);
+  }
+
+  bindMinimap() {
+    const mm = $('minimap');
+    const go = (e) => {
+      const r = mm.getBoundingClientRect();
+      const w = this.game.world;
+      this.renderer.cam.x = ((e.clientX - r.left) / r.width) * w.w * TILE;
+      this.renderer.cam.y = ((e.clientY - r.top) / r.height) * w.h * TILE;
+      this.freeCam = true;
+    };
+    let down = false;
+    mm.addEventListener('pointerdown', (e) => { down = true; mm.setPointerCapture(e.pointerId); go(e); });
+    mm.addEventListener('pointermove', (e) => { if (down) go(e); });
+    mm.addEventListener('pointerup', () => { down = false; });
+  }
+
   buildToolbar(fresh = []) {
     const tb = $('toolbar');
     tb.innerHTML = '';
@@ -287,9 +531,10 @@ class App {
       b.dataset.id = id;
       b.title = `${d.name} (${d.key})`;
       b.innerHTML = `<span class="key">${d.key}</span><img src="${this.toolImg[id]}" alt="">`;
-      b.onclick = () => { b.classList.remove('new'); this.selectTool(this.state.tool === id ? null : id); };
+      b.onclick = () => { b.classList.remove('new'); this.moving = null; this.selectTool(this.state.tool === id ? null : id); };
       tb.appendChild(b);
     }
+    this._hl = undefined;
     this.syncButtons();
   }
 
@@ -343,6 +588,21 @@ class App {
 
   closePanel() { $('panel').classList.add('hidden'); this.panelKind = null; }
 
+  openWelcome() {
+    const touch = matchMedia('(pointer: coarse)').matches;
+    this.showPanel('welcome', `<h2>Has aterrizado en Veyra</h2>
+      <p>Eres un dron constructor. Tu misión: extraer los recursos del planeta y montar una fábrica cada vez más grande.</p>
+      <div class="help">
+        <p><b>Moverte:</b> ${touch ? 'joystick abajo a la izquierda · arrastra el mapa para mirar · dos dedos para zoom' : 'WASD o flechas · arrastra el mapa para mirar · rueda para zoom'}.</p>
+        <p><b>Extraer a mano:</b> acércate a un recurso y mantén pulsado encima.</p>
+        <p><b>Construir:</b> elige un edificio abajo y toca el mapa. Las máquinas sacan lo que producen por la flecha naranja: pon delante una cinta u otra máquina.</p>
+        <p><b>La niebla</b> esconde lo que aún no has explorado. Los yacimientos se agotan: tendrás que buscar más.</p>
+        <p>Sigue los <b>objetivos</b> de arriba a la izquierda; la flecha verde te guía.</p>
+      </div>
+      <button class="btn primary" id="wGo" style="margin-top:10px;width:100%">¡A trabajar!</button>`);
+    $('wGo').onclick = () => this.closePanel();
+  }
+
   openMilestones() {
     const g = this.game;
     const next = g.nextMilestone();
@@ -354,24 +614,26 @@ class App {
         return `<div class="req"><img src="${this.itemImg[k]}" alt=""><div>${ITEMS[k].name}<div class="bar"><i style="width:${(have / v) * 100}%"></i></div></div><b>${have}/${v}</b></div>`;
       }).join('');
       const unl = next.unlocks.map((u) => BUILDINGS[u].name).join(', ');
-      body = `<h2>Siguiente hito: ${next.name}</h2><p>${next.text}</p>${rows}
+      body = `<h2>Hito ${g.milestone + 1}: ${next.name}</h2><p>${next.text}</p>${rows}
         <p>Desbloquea: <b>${unl}</b></p>
         <button class="btn primary" id="btnDeliver" ${g.canAfford(next.cost) ? '' : 'disabled'}>Entregar y desbloquear</button>`;
     } else if (next) {
-      body = `<h2>${next.name}</h2><p>${next.text}</p><p>Has terminado todo lo que ofrece la fase 1. ¡Gracias por probarla!</p>`;
+      body = `<h2>${next.name}</h2><p>${next.text}</p>`;
     }
-    body += `<p class="help">Lleva objetos con cintas a la Baliza: todo lo que entra pasa a tu inventario.</p><b>Completados</b><ul class="done-list">${done}</ul>`;
-    const scroll = $('panel').classList.contains('hidden') ? 0 : document.querySelector('.panel-box').scrollTop;
+    body += `<p class="help">Los materiales salen de tu inventario. Llévalos a la Baliza con cintas: todo lo que entra se suma.</p><b>Completados</b><ul class="done-list">${done}</ul>`;
+    const box = document.querySelector('.panel-box');
+    const scroll = $('panel').classList.contains('hidden') ? 0 : box.scrollTop;
     this.showPanel('milestones', body);
-    document.querySelector('.panel-box').scrollTop = scroll;
+    box.scrollTop = scroll;
     const btn = $('btnDeliver');
     if (btn) btn.onclick = () => { if (g.completeMilestone()) { saveLocal(g); this.openMilestones(); } };
   }
 
   openMenu() {
     this.showPanel('menu', `<h2>Factorium</h2>
-      <p>Fase 1 · la partida se guarda sola cada minuto y al cerrar.</p>
+      <p>Fase 1 · la partida se guarda sola cada 30 segundos y al cerrar.</p>
       <div class="menu-grid">
+        <button class="btn" id="mHelp">Cómo se juega</button>
         <button class="btn" id="mSave">Guardar ahora</button>
         <button class="btn" id="mExport">Exportar partida (archivo)</button>
         <button class="btn" id="mImport">Importar partida</button>
@@ -379,10 +641,10 @@ class App {
       </div>
       <h2 style="margin-top:16px">Controles</h2>
       <div class="help">
-        <p><b>PC:</b> WASD o arrastrar para moverte · rueda para zoom · 1–7 elige edificio · clic para colocar · arrastra para trazar cintas · <b>R</b> girar · clic derecho o <b>X</b> borrar · <b>Q</b>/Esc soltar · <b>H</b> hitos · F3 rendimiento.</p>
-        <p><b>Tablet:</b> un dedo para moverte · dos dedos para zoom · elige edificio y toca para colocar · arrastra para trazar cintas · botones ⟳ girar, ✖ borrar, ✋ soltar.</p>
-        <p>Mantén pulsado un recurso para extraer a mano. Toca una caja o un horno para recoger lo que tiene.</p>
+        <p><b>PC:</b> WASD mueve el dron (Mayús = rápido) · arrastrar mira el mapa · C vuelve al dron · rueda zoom · 1–9 edificios · clic coloca · arrastra para trazar cintas · <b>R</b> girar · clic derecho o <b>X</b> quitar · <b>Q</b>/Esc soltar · <b>H</b> hitos · F3 rendimiento.</p>
+        <p><b>Móvil y tablet:</b> joystick mueve el dron · un dedo mira el mapa · dos dedos zoom · elige edificio y toca para colocar · arrastra para trazar cintas · ⟳ girar, ✖ quitar, ✋ soltar.</p>
       </div>`);
+    $('mHelp').onclick = () => this.openWelcome();
     $('mSave').onclick = () => { this.toast(saveLocal(this.game) ? 'Partida guardada' : 'No se pudo guardar'); };
     $('mExport').onclick = () => exportFile(this.game);
     $('mImport').onclick = () => $('importFile').click();
@@ -391,13 +653,12 @@ class App {
       if (b.dataset.confirm) {
         clearLocal();
         this.setGame(new Game());
-        this.chips && Object.values(this.chips).forEach((c) => c.remove());
-        this.chips = null;
         this.buildToolbar();
         this.refreshInv();
+        this.refreshTask(true);
         saveLocal(this.game);
         this.closePanel();
-        this.toast('Nueva partida en un planeta nuevo');
+        this.openWelcome();
       } else {
         b.dataset.confirm = '1';
         b.textContent = '¿Seguro? Se perderá la partida actual. Toca otra vez.';
@@ -412,8 +673,9 @@ class App {
     for (const k of Object.keys(BUILDINGS)) g.unlocked.add(k);
     const w = g.world;
     w.terrain.fill(0);
+    w.explored.fill(1);
+    this.renderer.fogDirty = true;
     let placed = 0;
-    // bucles rectangulares de 24x6 con objetos circulando
     const LW = 24, LH = 6;
     outer:
     for (let y = 2; y + LH < w.h - 2; y += LH + 1) {
@@ -436,6 +698,7 @@ class App {
       }
     }
     this.renderer.chunks.clear();
+    this.renderer.ground.clear();
     $('debug').classList.remove('hidden');
   }
 }

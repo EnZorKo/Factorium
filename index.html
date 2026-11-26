@@ -12,6 +12,25 @@
 
   <div id="inv" class="hud"></div>
 
+  <div id="task" class="hud">
+    <div class="task-head"><span id="taskNum">Objetivo</span><button id="taskToggle" class="mini">–</button></div>
+    <div id="taskBody">
+      <div id="taskText"></div>
+      <div class="bar"><i id="taskBar"></i></div>
+      <div id="taskCount"></div>
+    </div>
+  </div>
+
+  <canvas id="minimap" class="hud" title="Minimapa: toca para mirar ahí"></canvas>
+  <button id="btnCenter" class="btn hud hidden" title="Volver al dron (C)">◎ Dron</button>
+
+  <div id="joy" class="hud"><div id="joyKnob"></div></div>
+
+  <div id="sheet" class="hud hidden">
+    <button class="close btn" id="sheetClose">✕</button>
+    <div id="sheetBody"></div>
+  </div>
+
   <div id="topright" class="hud">
     <button id="btnMilestones" class="btn">Hitos</button>
     <button id="btnMenu" class="btn" aria-label="Menú">☰</button>

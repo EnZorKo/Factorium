@@ -4,11 +4,13 @@ Juego de automatización 2D con vista cenital, para navegador (PC y tablet). Est
 
 ## Estado: fase 1 (base)
 
-- Mapa generado con semilla: biomas, lagos y vetas de Ferrita, Cobalina y Musgo ámbar.
-- Edificios: Cinta, Taladro, Horno, Caja y Baliza de aterrizaje (tu base). El hito «Reparto» desbloquea Divisor, Cinta Mk2 y Taladro Mk2.
-- Construir y borrar en rejilla, girar y trazar cintas arrastrando. Al borrar se devuelve todo.
-- Autoguardado en el navegador cada minuto y al cerrar, más exportar/importar la partida.
-- Controles de ratón y teclado, y táctiles (un dedo mueve, dos dedos hacen zoom).
+- Manejas un dron (WASD en PC, joystick en móvil) que explora el mapa. La niebla oculta lo que no has descubierto.
+- Mapa con biomas, lagos y yacimientos finitos de Ferrita, Cobalina y Musgo ámbar. Los más lejanos son más grandes y ricos.
+- Edificios: Cinta, Cinta Mk2, Taladro, Taladro Mk2, Horno, Prensa, Ensambladora, Caja, Divisor y la Baliza de aterrizaje.
+- 11 objetos y recetas encadenadas: mineral → lingote → chapa, eje e hilo → engranaje y bobina.
+- 12 objetivos guiados con flecha y recompensas, y 4 hitos que desbloquean edificios.
+- Máquinas con luz de estado, humo, chispas y panel al tocarlas (receta, contenido, girar, mover y quitar).
+- Minimapa, autoguardado cada 30 s y al cerrar, y exportar/importar partida.
 
 ## Jugar en local
 
