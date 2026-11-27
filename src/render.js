@@ -343,7 +343,7 @@ export class Renderer {
       ctx.drawImage(this.buildingSprite(e, t), px, py, s, s);
       // efectos de trabajo
       if (e.status === 'work' && Math.random() < dt * 6) {
-        if (e.kind === 'furnace' || e.kind === 'boiler') this.puff(px + 14, py + 14, 'smoke');
+        if (e.kind === 'furnace' || e.kind === 'boiler' || e.kind === 'fuelgen') this.puff(px + 14, py + 14, 'smoke');
         else if (e.kind === 'miner') { this.dustColor = e.res === 2 ? '200,130,70' : e.res === 3 ? '40,40,44' : '170,95,70'; this.puff(px + s / 2, py + s / 2 - 6, 'dust'); }
         else if (e.kind === 'crafter') this.puff(px + s / 2, py + s / 2, 'spark');
       }
@@ -359,7 +359,7 @@ export class Renderer {
           ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
         }
         // luz de estado
-        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery') {
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery' || e.kind === 'fuelgen') {
           const st = e.status;
           const col = st === 'discharge' ? '#4fd1bd' : st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
           const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
@@ -379,7 +379,7 @@ export class Renderer {
           ctx.globalAlpha = 1;
         }
       }
-      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
+      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
         this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
       }
@@ -565,9 +565,10 @@ export class Renderer {
     if (on) e._anim = (e._anim || 0) + 0.25;
     const a = (e._anim || 0) | 0;
     switch (e.kind) {
-      case 'miner': return sp.miner[e.type === 'taladro2' ? 2 : 1][e.dir][a % 8];
+      case 'miner': return e.type === 'pozo' ? sp.pumpjack[e.dir][a % 8] : sp.miner[e.type === 'taladro2' ? 2 : 1][e.dir][a % 8];
       case 'furnace': return on ? sp.furnace.on[e.dir][((t * 8) | 0) % 6] : sp.furnace.off[e.dir];
-      case 'crafter': return e.type === 'prensa' ? sp.press[e.dir][a % 8] : sp.assembler[e.dir][a % 12];
+      case 'crafter': return e.type === 'prensa' ? sp.press[e.dir][a % 8] : e.type === 'refineria' ? sp.refinery[e.dir][a % 6] : sp.assembler[e.dir][a % 12];
+      case 'fuelgen': return sp.fuelgen[e.status === 'work' ? ((t * 10) | 0) % 2 : 0];
       case 'chest': return sp.chest;
       case 'splitter': return sp.splitter[e.dir];
       case 'pole': return sp.pole;
@@ -593,7 +594,7 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = g.ok ? 'rgba(80,220,150,0.25)' : 'rgba(240,70,60,0.35)';
     ctx.fillRect(g.x * TILE, g.y * TILE, s, s);
-    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery'].includes(def.kind)) {
+    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen'].includes(def.kind)) {
       const m = (def.size - 1) >> 1, sz = def.size;
       const out = [[g.x + sz, g.y + m], [g.x + sz - 1 - m, g.y + sz], [g.x - 1, g.y + sz - 1 - m], [g.x + m, g.y - 1]][g.dir];
       this.arrow(out[0], out[1], g.dir, 'rgba(255,190,80,0.95)');
@@ -632,7 +633,7 @@ export class Renderer {
       const img = x.createImageData(w.w, w.h);
       const d = img.data;
       const cols = { 0: [70, 64, 58], 1: [98, 66, 52], 2: [48, 66, 68], 3: [18, 44, 60] };
-      const rc = { 1: [192, 106, 80], 2: [208, 129, 63], 3: [20, 20, 24] };
+      const rc = { 1: [192, 106, 80], 2: [208, 129, 63], 3: [20, 20, 24], 4: [110, 60, 160], 5: [122, 220, 74] };
       for (let i = 0; i < w.terrain.length; i++) {
         const o = i * 4;
         let c = w.explored[i] ? (w.resource[i] ? rc[w.resource[i]] : cols[w.terrain[i]]) : [12, 14, 17];

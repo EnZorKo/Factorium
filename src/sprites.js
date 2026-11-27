@@ -159,6 +159,32 @@ function itemIcon(id, size = 32) {
     x.beginPath(); x.arc(16, 16, 8.5, 0, 7); x.fill();
     x.fillStyle = it.dark;
     x.beginPath(); x.arc(16, 16, 3.5, 0, 7); x.fill();
+  } else if (it.shape === 'barrel') {
+    x.fillStyle = it.dark; x.beginPath(); x.ellipse(16, 17, 10, 11, 0, 0, 7); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#3a3a42'; x.beginPath(); x.ellipse(16, 16, 8.5, 9.5, 0, 0, 7); x.fill();
+    x.strokeStyle = '#6a6a74'; x.lineWidth = 1.5;
+    x.beginPath(); x.ellipse(16, 16, 6, 7, 0, 0, 7); x.stroke();
+    x.fillStyle = '#c87a3a'; x.beginPath(); x.arc(19, 12, 1.8, 0, 7); x.fill();
+  } else if (it.shape === 'canister') {
+    x.fillStyle = it.dark; x.beginPath(); x.roundRect(7, 7, 18, 21, 3); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = it.color; x.beginPath(); x.roundRect(8, 8, 16, 19, 3); x.fill();
+    x.fillStyle = '#2b2e31'; x.fillRect(17, 4, 6, 5);
+    x.strokeStyle = 'rgba(0,0,0,0.35)'; x.lineWidth = 2;
+    x.beginPath(); x.moveTo(10, 11); x.lineTo(22, 24); x.moveTo(22, 11); x.lineTo(10, 24); x.stroke();
+  } else if (it.shape === 'sheet') {
+    x.fillStyle = it.dark; x.beginPath(); x.roundRect(6, 9, 21, 16, 3); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = it.color; x.beginPath(); x.roundRect(5, 7, 21, 15, 3); x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.7)'; x.fillRect(8, 9, 10, 2);
+  } else if (it.shape === 'board') {
+    x.fillStyle = it.dark; x.fillRect(5, 6, 22, 20);
+    x.shadowColor = 'transparent';
+    x.fillStyle = it.color; x.fillRect(6, 7, 20, 18);
+    x.strokeStyle = '#d8b04a'; x.lineWidth = 1.2;
+    x.beginPath(); x.moveTo(8, 12); x.lineTo(14, 12); x.lineTo(16, 16); x.lineTo(24, 16); x.moveTo(8, 20); x.lineTo(20, 20); x.stroke();
+    x.fillStyle = '#1a1c1e'; x.fillRect(15, 9, 6, 5);
   } else if (it.shape === 'frame') {
     x.strokeStyle = it.dark; x.lineWidth = 5;
     x.strokeRect(6, 6, 20, 20);
@@ -634,6 +660,74 @@ function batterySprite(level) {
   return c;
 }
 
+function pumpjackSprite(f) {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4a4540');
+  hazard(x, 8, W - 18, W - 16, 10);
+  x.fillStyle = '#0b0b0f'; x.beginPath(); x.arc(40, 64, 16, 0, 7); x.fill();
+  // balancín: se desplaza adelante y atrás
+  const k = Math.sin((f / 8) * Math.PI * 2) * 10;
+  x.fillStyle = 'rgba(0,0,0,0.4)'; x.fillRect(30 + k + 4, 56 + 4, 70, 16);
+  x.fillStyle = '#c2632a'; x.fillRect(30 + k, 56, 70, 16);
+  x.fillStyle = '#2b2e31'; x.fillRect(30 + k, 62, 70, 4);
+  x.fillStyle = '#8c9197'; x.beginPath(); x.arc(80, 64, 9, 0, 7); x.fill();
+  x.fillStyle = '#5a5e63'; x.beginPath(); x.roundRect(22 + k, 50, 16, 28, 6); x.fill();
+  x.fillStyle = '#26282b'; x.fillRect(W - 16, 18, 13, 28);
+  x.fillStyle = '#c2632a'; x.beginPath(); x.moveTo(W - 12, 24); x.lineTo(W - 5, 32); x.lineTo(W - 12, 40); x.fill();
+  grime(x, W, W, 111, 0.12);
+  return c;
+}
+
+function refinerySprite(f) {
+  const W = S * 3;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4d4a46');
+  rivets(x, 3, 3, W - 6, W - 6, 10);
+  // tuberías
+  x.strokeStyle = '#2b2e31'; x.lineWidth = 10;
+  x.beginPath(); x.moveTo(50, 50); x.lineTo(130, 50); x.lineTo(130, 130); x.lineTo(50, 130); x.stroke();
+  x.strokeStyle = '#8c9197'; x.lineWidth = 4;
+  x.beginPath(); x.moveTo(50, 50); x.lineTo(130, 50); x.lineTo(130, 130); x.lineTo(50, 130); x.stroke();
+  // torres
+  for (const [tx, ty, r] of [[50, 50, 26], [130, 130, 22], [50, 130, 18]]) {
+    const g = x.createRadialGradient(tx - r / 3, ty - r / 3, 2, tx, ty, r);
+    g.addColorStop(0, '#c3c7cc'); g.addColorStop(1, '#4d5257');
+    x.fillStyle = '#1e2022'; x.beginPath(); x.arc(tx, ty, r + 3, 0, 7); x.fill();
+    x.fillStyle = g; x.beginPath(); x.arc(tx, ty, r, 0, 7); x.fill();
+    x.strokeStyle = '#c2632a'; x.lineWidth = 3; x.beginPath(); x.arc(tx, ty, r * 0.6, 0, 7); x.stroke();
+  }
+  // antorcha
+  const fl = 0.6 + 0.4 * Math.sin(f * 2.1);
+  x.fillStyle = '#2b2e31'; x.beginPath(); x.arc(135, 48, 9, 0, 7); x.fill();
+  x.fillStyle = `rgba(255,${150 + 60 * fl},60,${fl})`; x.beginPath(); x.arc(135, 48, 6, 0, 7); x.fill();
+  x.fillStyle = '#26282b'; x.fillRect(W - 18, W / 2 - 16, 15, 32);
+  x.fillStyle = '#c2632a'; x.beginPath(); x.moveTo(W - 14, W / 2 - 8); x.lineTo(W - 6, W / 2); x.lineTo(W - 14, W / 2 + 8); x.fill();
+  grime(x, W, W, 121, 0.12);
+  return c;
+}
+
+function fuelGenSprite(f) {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#5a3a32');
+  rivets(x, 3, 3, W - 6, W - 6, 8);
+  x.fillStyle = '#2b2e31'; x.beginPath(); x.roundRect(18, 26, 92, 60, 8); x.fill();
+  for (let i = 0; i < 4; i++) {
+    const up = (f + i) % 2 ? 3 : 0;
+    x.fillStyle = '#8c9197'; x.beginPath(); x.roundRect(26 + i * 21, 36 - up, 15, 40, 4); x.fill();
+    x.fillStyle = '#5a5e63'; x.fillRect(28 + i * 21, 40 - up, 11, 4);
+  }
+  x.fillStyle = '#1e2022'; x.beginPath(); x.arc(100, 104, 9, 0, 7); x.fill();
+  x.fillStyle = '#f2c14a';
+  x.beginPath(); x.moveTo(30, 96); x.lineTo(24, 108); x.lineTo(29, 108); x.lineTo(26, 118); x.lineTo(36, 102); x.lineTo(31, 102); x.closePath(); x.fill();
+  grime(x, W, W, 131, 0.12);
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -641,6 +735,35 @@ function resourceTile(type, variant) {
   const r = (i) => hash2(variant, i, type * 17);
   x.shadowColor = 'rgba(0,0,0,0.5)';
   x.shadowOffsetY = 3; x.shadowBlur = 3;
+  if (type === 4) {
+    // charco de petróleo con brillo irisado
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#0b0b0f';
+    x.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = (k / 10) * Math.PI * 2, rr = 22 + r(k) * 8;
+      k ? x.lineTo(32 + Math.cos(a) * rr, 32 + Math.sin(a) * rr) : x.moveTo(32 + rr, 32);
+    }
+    x.closePath(); x.fill();
+    const g = x.createLinearGradient(14, 14, 50, 50);
+    g.addColorStop(0, 'rgba(120,60,200,0.35)'); g.addColorStop(0.5, 'rgba(40,200,180,0.25)'); g.addColorStop(1, 'rgba(220,180,60,0.3)');
+    x.fillStyle = g;
+    x.beginPath(); x.ellipse(28 + r(20) * 8, 28 + r(21) * 8, 10, 6, r(22) * 3, 0, 7); x.fill();
+    return c;
+  }
+  if (type === 5) {
+    const n = 3 + Math.floor(r(0) * 3);
+    for (let i = 0; i < n; i++) {
+      const cx = 12 + r(i + 1) * 40, cy = 12 + r(i + 11) * 40, sz = 6 + r(i + 21) * 6;
+      x.fillStyle = '#1e2a18';
+      x.beginPath(); x.arc(cx, cy, sz + 2, 0, 7); x.fill();
+      x.shadowColor = 'transparent';
+      x.fillStyle = '#5ac83a'; x.beginPath(); x.arc(cx - 1, cy - 1, sz * 0.7, 0, 7); x.fill();
+      x.fillStyle = '#c8ff8a'; x.beginPath(); x.arc(cx - sz * 0.3, cy - sz * 0.3, sz * 0.25, 0, 7); x.fill();
+      x.shadowColor = 'rgba(0,0,0,0.5)';
+    }
+    return c;
+  }
   if (type === 2 || type === 3) {
     // cobre: rocas anaranjadas con pátina verde · carbón: trozos negros brillantes
     const base = type === 2 ? ['#5a3420', '#b8693a', '#e0a070'] : ['#0e0e10', '#26262a', '#5a5a62'];
@@ -726,11 +849,14 @@ export function buildSprites() {
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
   sp.solar = solarSprite();
+  sp.pumpjack = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pumpjackSprite(f), d)));
+  sp.refinery = [0, 1, 2, 3].map((d) => Array.from({ length: 6 }, (_, f) => rotated(refinerySprite(f), d)));
+  sp.fuelgen = Array.from({ length: 2 }, (_, f) => fuelGenSprite(f));
   sp.battery = Array.from({ length: 6 }, (_, k) => batterySprite(k / 5));
   sp.pump = Array.from({ length: 8 }, (_, f) => pumpSprite(f));
   sp.boiler = { off: [0, 1, 2, 3].map((d) => rotated(boilerSprite(false, 0), d)), on: [0, 1, 2, 3].map((d) => Array.from({ length: 6 }, (_, f) => rotated(boilerSprite(true, f), d))) };
   sp.generator = Array.from({ length: 12 }, (_, f) => generatorSprite(f * (Math.PI * 2 / 0.35) / 12 / 10 * 2));
-  for (const t of [1, 2, 3]) sp.res[t] = Array.from({ length: 8 }, (_, v) => resourceTile(t, v));
+  for (const t of [1, 2, 3, 4, 5]) sp.res[t] = Array.from({ length: 8 }, (_, v) => resourceTile(t, v));
   return sp;
 }
 
@@ -755,6 +881,9 @@ export function toolIcon(sp, type) {
     case 'caldera': img = sp.boiler.on[0][0]; break;
     case 'generador': img = sp.generator[0]; break;
     case 'solar': img = sp.solar; break;
+    case 'pozo': img = sp.pumpjack[0][0]; break;
+    case 'refineria': img = sp.refinery[0][0]; break;
+    case 'genComb': img = sp.fuelgen[0]; break;
     case 'acumulador': img = sp.battery[4]; break;
     default: img = sp.chest;
   }

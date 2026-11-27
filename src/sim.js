@@ -80,7 +80,7 @@ export class Game {
         }
       }
     }
-    if (def.kind === 'miner' && !this.minerTiles(x, y, s).length) return { ok: false, reason: 'El taladro va encima de un recurso' };
+    if (def.kind === 'miner' && !this.minerTiles(x, y, s, def.res).length) return { ok: false, reason: def.res ? 'El pozo va encima de petróleo' : 'El taladro va encima de un recurso sólido' };
     if (def.kind === 'pump') {
       const w = this.world;
       let wet = false;
@@ -98,16 +98,16 @@ export class Game {
   }
 
   // casillas de recurso bajo un taladro, del tipo más abundante
-  minerTiles(x, y, s) {
+  minerTiles(x, y, s, allowed = [1, 2, 3, 5]) {
     const w = this.world;
-    const counts = [0, 0, 0, 0];
+    const counts = [0, 0, 0, 0, 0, 0];
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
       if (!w.inside(x + i, y + j)) continue;
       const k = w.idx(x + i, y + j);
       if (w.amount[k] > 0) counts[w.resource[k]]++;
     }
     let best = 0;
-    for (let r = 1; r < 4; r++) if (counts[r] > (best ? counts[best] : 0)) best = r;
+    for (const r of allowed) if (counts[r] > (best ? counts[best] : 0)) best = r;
     if (!best) return [];
     const out = [];
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
@@ -165,7 +165,7 @@ export class Game {
       e.outCount = 0; e.progress = 0;
     }
     if ((e.kind === 'miner' || e.kind === 'splitter') && e.buf) { inv[e.buf]++; e.buf = null; }
-    if (e.kind === 'boiler' && e.fuelType) { inv[e.fuelType] += e.fuel; e.fuel = 0; }
+    if ((e.kind === 'boiler' || e.kind === 'fuelgen' || e.kind === 'reactor') && e.fuelType) { inv[e.fuelType] += e.fuel; e.fuel = 0; }
   }
 
   remove(e) {
@@ -207,6 +207,7 @@ export class Game {
     const w = this.world;
     if (!w.inside(x, y) || this.entityAt(x, y)) return null;
     const k = w.idx(x, y);
+    if (w.resource[k] === 4) return null; // el petróleo necesita un pozo
     const item = this.extract(k);
     if (item) {
       this.inv[item]++;
@@ -574,7 +575,7 @@ function initEntity(e, g) {
   switch (e.kind) {
     case 'belt': e.it = []; e.ip = []; break;
     case 'miner': {
-      const tiles = g.minerTiles(e.x, e.y, e.size);
+      const tiles = g.minerTiles(e.x, e.y, e.size, e.def.res);
       e.res = g.world.resource[tiles[0]];
       e.tiles = tiles;
       e.item = RESOURCES[e.res].item;
@@ -592,6 +593,7 @@ function initEntity(e, g) {
     case 'generator': e.boiler = null; e.avail = 0; break;
     case 'solar': e.status = 'idle'; break;
     case 'battery': e.charge = 0; e.status = 'idle'; break;
+    case 'fuelgen': case 'reactor': e.fuelType = null; e.fuel = 0; e.energy = 0; e.burning = 0; e.water = 0; e.status = 'idle'; break;
     case 'hub': break;
   }
 }
@@ -631,8 +633,9 @@ function accept(g, e, item, travel) {
       e.inb[item]++;
       return true;
     }
+    case 'fuelgen':
     case 'boiler': {
-      if (!FUEL[item]) return false;
+      if (!FUEL[item] || (e.def.fuels && !e.def.fuels.includes(item))) return false;
       if (e.fuelType && e.fuelType !== item && e.fuel > 0) return false;
       if (e.fuel >= 20) return false;
       e.fuelType = item; e.fuel++;

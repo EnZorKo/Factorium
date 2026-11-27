@@ -67,10 +67,43 @@ export class World {
       this.patch(x, y, type, 3.5 + rnd() * 3 + d / 35, rnd, 1 + d / 30);
       placed++;
     }
+    // Petróleo y uranio: lejos de la Baliza, con su propia semilla (no cambia el resto del mapa).
+    const rnd2 = mulberry32(seed ^ 0x51ed270b);
+    const extra = [[4, 14, 40], [5, 8, 55]];
+    for (const [type, count, minD] of extra) {
+      let n = 0, tries2 = 0;
+      while (n < count && tries2 < 4000) {
+        tries2++;
+        const x = 6 + Math.floor(rnd2() * (w - 12));
+        const y = 6 + Math.floor(rnd2() * (h - 12));
+        const d = Math.hypot(x - cx, y - cy);
+        if (d < minD) continue;
+        const k = this.idx(x, y);
+        if (this.terrain[k] === T_WATER || this.resource[k]) continue;
+        if (type === 4) this.oilField(x, y, rnd2);
+        else this.patch(x, y, 5, 2.5 + rnd2() * 2, rnd2, 1 + d / 40, true);
+        n++;
+      }
+    }
+  }
+
+  // Campo de petróleo: unos pocos charcos sueltos muy ricos.
+  oilField(px, py, rnd) {
+    const n = 3 + Math.floor(rnd() * 4);
+    for (let i = 0; i < n; i++) {
+      const x = px + Math.floor((rnd() - 0.5) * 8), y = py + Math.floor((rnd() - 0.5) * 8);
+      for (let j = 0; j < 2; j++) for (let k = 0; k < 2; k++) {
+        if (!this.inside(x + k, y + j)) continue;
+        const t = this.idx(x + k, y + j);
+        if (this.terrain[t] === T_WATER || this.resource[t]) continue;
+        this.resource[t] = 4;
+        this.amount[t] = 3000 + Math.floor(rnd() * 4000);
+      }
+    }
   }
 
   // richness multiplica la cantidad; el centro de la veta es más rico que el borde.
-  patch(px, py, type, radius, rnd, richness) {
+  patch(px, py, type, radius, rnd, richness, onlyEmpty = false) {
     const r = Math.ceil(radius + 2);
     const s = Math.floor(rnd() * 1e6);
     for (let y = py - r; y <= py + r; y++) {
@@ -81,6 +114,7 @@ export class World {
         const d = Math.hypot(x - px, y - py);
         const wobble = fbm(x / 3, y / 3, s, 2) * 2.6 - 1.3;
         if (d + wobble < radius) {
+          if (onlyEmpty && this.resource[i]) continue;
           this.resource[i] = type;
           const core = 1 - Math.min(1, d / radius);
           this.amount[i] = Math.round((250 + 900 * core) * richness);
