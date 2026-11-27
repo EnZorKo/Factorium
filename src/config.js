@@ -16,6 +16,8 @@ export const ITEMS = {
   lingFerrico:  { name: 'Lingote de hierro',     color: '#b4b8be', dark: '#5b6067', shape: 'ingot' },
   lingCobalina: { name: 'Lingote de cobre',    color: '#e0884a', dark: '#8a4a22', shape: 'ingot' },
   uranio:       { name: 'Mineral de uranio',   color: '#7adc4a', dark: '#2a4a1a', shape: 'ore' },
+  u235:         { name: 'Uranio enriquecido',  color: '#9cff5a', dark: '#2a5a14', shape: 'pellet' },
+  celda:        { name: 'Celda de combustible nuclear', color: '#7adc4a', dark: '#3a3d42', shape: 'cell' },
   crudo:        { name: 'Barril de crudo',     color: '#2a2a30', dark: '#0c0c0e', shape: 'barrel' },
   combustible:  { name: 'Combustible',         color: '#d8503a', dark: '#6a1e14', shape: 'canister' },
   plastico:     { name: 'Plástico',            color: '#e8e4dc', dark: '#8a867e', shape: 'sheet' },
@@ -62,6 +64,8 @@ export const RECIPES = {
   combustible: { machine: 'refineria',  in: { crudo: 3 },               out: 'combustible', n: 2, time: 4.0 },
   plastico:  { machine: 'refineria',    in: { crudo: 2, musgo: 1 },      out: 'plastico',  n: 2, time: 4.0 },
   circuito:  { machine: 'ensambladora', in: { plastico: 2, hilo: 3 },    out: 'circuito',  n: 1, time: 4.0 },
+  u235:      { machine: 'centrifugadora', in: { uranio: 10 },          out: 'u235',      n: 1, time: 10.0 },
+  celda:     { machine: 'ensambladora', in: { u235: 1, acero: 5, circuito: 2 }, out: 'celda', n: 1, time: 8.0 },
   traccion:  { machine: 'ensambladora', in: { bastidor: 1, actuador: 2, hilo: 10 }, out: 'traccion', n: 1, time: 12.0 },
 };
 
@@ -106,11 +110,15 @@ export const BUILDINGS = {
                   desc: 'Convierte crudo en Combustible o Plástico. Tócala para elegir receta.' },
   genComb:      { name: 'Generador de combustible', kind: 'fuelgen', size: 2, output: 1500, fuels: ['combustible'], cost: { acero: 30, actuador: 10, hilo: 40 }, key: 'm',
                   desc: 'Quema combustible y da 1,5 MW. No necesita agua. Conéctalo a un poste.' },
+  centrifugadora: { name: 'Centrifugadora', kind: 'crafter', size: 3, power: 350, cost: { acero: 50, circuito: 20, actuador: 10 }, key: 'z', defaultRecipe: 'u235',
+                  desc: 'Enriquece el mineral de uranio: 10 → 1 Uranio enriquecido.' },
+  reactor:      { name: 'Reactor nuclear', kind: 'reactor', size: 4, output: 10000, fuels: ['celda'], cost: { acero: 200, circuito: 100, bastidor: 40, traccion: 10 }, key: 'n',
+                  desc: 'Da 10 MW quemando celdas nucleares. Necesita mucha agua: conéctalo con tuberías a bombas (cuenta como 3 calderas).' },
   baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, supply: 6, wire: 9, output: 180, cost: {}, hidden: true,
                   desc: 'Tu base. Todo lo que entra va a tu inventario. Da 180 kW de energía de emergencia a su alrededor.' },
 };
 
-export const FUEL = { musgo: 4000, pastilla: 9000, combustible: 40000 }; // kJ por unidad
+export const FUEL = { musgo: 4000, pastilla: 9000, combustible: 40000, celda: 8000000 }; // kJ por unidad
 export const DAY_LEN = 300; // segundos que dura un día completo
 export const PUMP_BOILERS = 4;
 export const BOILER_GENS = 2;
@@ -138,12 +146,15 @@ export const MILESTONES = [
   { id: 'petroleo', name: 'Petróleo', cost: { acero: 300, actuador: 60, bastidor: 60 },
     unlocks: ['pozo', 'refineria', 'genComb'],
     text: 'Pozos sobre los charcos negros, refinería para Combustible y Plástico, y generadores de combustible de 1,5 MW. La Ensambladora ya hace Circuitos con plástico.' },
-  { id: 'nuclear', name: 'Nuclear', cost: null, unlocks: [],
-    text: 'Uranio, centrifugadora y reactor llegarán en la próxima versión.' },
+  { id: 'nuclear', name: 'Nuclear', cost: { circuito: 300, acero: 500, traccion: 40 },
+    unlocks: ['centrifugadora', 'reactor'],
+    text: 'Mina el uranio (verde), enriquécelo en la Centrifugadora, haz Celdas en la Ensambladora y quémalas en un Reactor de 10 MW refrigerado con agua.' },
+  { id: 'logistica', name: 'Logística a distancia', cost: null, unlocks: [],
+    text: 'Drones de carga entre bases lejanas. Llegará en la próxima versión.' },
 ];
 
 // Hoja de ruta de energía (se muestra en Hitos).
-export const ROADMAP = ['Nuclear: uranio, reactor e intercambiadores de calor'];
+export const ROADMAP = ['Logística a distancia: drones de carga', 'Proyecto final'];
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [

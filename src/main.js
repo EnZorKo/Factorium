@@ -294,6 +294,7 @@ class App {
         h += `<div class="help">Agua: ${(e.water * 100).toFixed(0)}% · alimenta ${e.gens.length} de 2 generadores · quema carbón o coque (que le llegue por cinta).</div>`;
         break;
       }
+      case 'reactor': h += `<div class="slots">${e.fuelType ? this.slot(e.fuelType, e.fuel) : '<span class="slot">sin celdas</span>'}</div><div class="help">Agua: ${((e.water || 0) * 100).toFixed(0)}% · cada celda dura unos 13 minutos a plena carga.</div>`; break;
       case 'fuelgen': h += `<div class="slots">${e.fuelType ? this.slot(e.fuelType, e.fuel) : '<span class="slot">sin combustible</span>'}</div><div class="help">Llévale Combustible por cinta. Da hasta 1500 kW.</div>`; break;
       case 'generator': h += `<div class="help">${e.boiler ? `Recibe vapor de una caldera · da ${(e.avail || 0).toFixed(0)} kW disponibles` : '<span class="bad">Necesita una caldera tocándolo</span>'}</div>`; break;
       case 'solar': h += `<div class="help">Ahora da ${(e.def.output * (this.game.light || 0)).toFixed(0)} de 60 kW (${this.game.light > 0.02 ? 'de día' : 'de noche'}).</div>`; break;

@@ -185,6 +185,12 @@ function itemIcon(id, size = 32) {
     x.strokeStyle = '#d8b04a'; x.lineWidth = 1.2;
     x.beginPath(); x.moveTo(8, 12); x.lineTo(14, 12); x.lineTo(16, 16); x.lineTo(24, 16); x.moveTo(8, 20); x.lineTo(20, 20); x.stroke();
     x.fillStyle = '#1a1c1e'; x.fillRect(15, 9, 6, 5);
+  } else if (it.shape === 'cell') {
+    x.fillStyle = it.dark; x.beginPath(); x.roundRect(9, 4, 14, 25, 4); x.fill();
+    x.shadowColor = 'transparent';
+    x.fillStyle = '#8c9197'; x.fillRect(10, 5, 12, 4); x.fillRect(10, 24, 12, 4);
+    x.fillStyle = it.color; x.fillRect(12, 9, 8, 15);
+    x.fillStyle = '#e0ffc0'; x.fillRect(13, 10, 2, 12);
   } else if (it.shape === 'frame') {
     x.strokeStyle = it.dark; x.lineWidth = 5;
     x.strokeRect(6, 6, 20, 20);
@@ -728,6 +734,53 @@ function fuelGenSprite(f) {
   return c;
 }
 
+function centrifugeSprite(f) {
+  const W = S * 3;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#3f4a44');
+  hazard(x, 10, W - 22, W - 20, 10);
+  rivets(x, 3, 3, W - 6, W - 6, 10);
+  for (const [cx, cy] of [[60, 60], [W - 60, 60], [W / 2, 120]]) {
+    x.fillStyle = '#1e2022'; x.beginPath(); x.arc(cx, cy, 30, 0, 7); x.fill();
+    x.fillStyle = '#6b7076'; x.beginPath(); x.arc(cx, cy, 25, 0, 7); x.fill();
+    x.save(); x.translate(cx, cy); x.rotate(f * 0.9);
+    x.fillStyle = '#9cff5a';
+    for (let i = 0; i < 3; i++) { x.rotate((Math.PI * 2) / 3); x.beginPath(); x.arc(13, 0, 5, 0, 7); x.fill(); }
+    x.restore();
+    x.fillStyle = '#2b2e31'; x.beginPath(); x.arc(cx, cy, 6, 0, 7); x.fill();
+  }
+  x.fillStyle = '#26282b'; x.fillRect(W - 18, W / 2 - 16, 15, 32);
+  x.fillStyle = '#c2632a'; x.beginPath(); x.moveTo(W - 14, W / 2 - 8); x.lineTo(W - 6, W / 2); x.lineTo(W - 14, W / 2 + 8); x.fill();
+  grime(x, W, W, 141, 0.12);
+  return c;
+}
+
+function reactorSprite(lit, f) {
+  const W = S * 4;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  // hormigón
+  x.fillStyle = '#2a2a2c'; x.fillRect(3, 3, W - 6, W - 6);
+  for (let j = 0; j < 8; j++) for (let i = 0; i < 8; i++) {
+    const h = hash2(i, j, 9);
+    x.fillStyle = `rgb(${120 + h * 25},${120 + h * 25},${116 + h * 22})`;
+    x.fillRect(6 + i * 31, 6 + j * 31, 29, 29);
+  }
+  hazard(x, 6, 6, W - 12, 12);
+  hazard(x, 6, W - 18, W - 12, 12);
+  // núcleo
+  x.fillStyle = '#1b1d1f'; x.beginPath(); x.arc(W / 2, W / 2, 70, 0, 7); x.fill();
+  const k = lit ? 0.7 + 0.3 * Math.sin(f * 1.3) : 0.15;
+  const g = x.createRadialGradient(W / 2, W / 2, 6, W / 2, W / 2, 62);
+  g.addColorStop(0, `rgba(200,255,150,${k})`); g.addColorStop(0.6, `rgba(90,220,120,${k * 0.6})`); g.addColorStop(1, 'rgba(20,60,40,0.2)');
+  x.fillStyle = g; x.beginPath(); x.arc(W / 2, W / 2, 62, 0, 7); x.fill();
+  x.strokeStyle = '#5a5e63'; x.lineWidth = 4;
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; x.beginPath(); x.moveTo(W / 2 + Math.cos(a) * 20, W / 2 + Math.sin(a) * 20); x.lineTo(W / 2 + Math.cos(a) * 62, W / 2 + Math.sin(a) * 62); x.stroke(); }
+  x.fillStyle = '#3a3d41'; x.beginPath(); x.arc(W / 2, W / 2, 16, 0, 7); x.fill();
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -849,6 +902,8 @@ export function buildSprites() {
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
   sp.solar = solarSprite();
+  sp.centrifuge = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(centrifugeSprite(f), d)));
+  sp.reactor = { off: reactorSprite(false, 0), on: Array.from({ length: 6 }, (_, f) => reactorSprite(true, f)) };
   sp.pumpjack = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pumpjackSprite(f), d)));
   sp.refinery = [0, 1, 2, 3].map((d) => Array.from({ length: 6 }, (_, f) => rotated(refinerySprite(f), d)));
   sp.fuelgen = Array.from({ length: 2 }, (_, f) => fuelGenSprite(f));
@@ -881,6 +936,8 @@ export function toolIcon(sp, type) {
     case 'caldera': img = sp.boiler.on[0][0]; break;
     case 'generador': img = sp.generator[0]; break;
     case 'solar': img = sp.solar; break;
+    case 'centrifugadora': img = sp.centrifuge[0][0]; break;
+    case 'reactor': img = sp.reactor.on[0]; break;
     case 'pozo': img = sp.pumpjack[0][0]; break;
     case 'refineria': img = sp.refinery[0][0]; break;
     case 'genComb': img = sp.fuelgen[0]; break;

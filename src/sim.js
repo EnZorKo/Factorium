@@ -340,10 +340,10 @@ export class Game {
   }
 
   rebuildWater() {
-    const fluid = new Set(['pipe', 'pump', 'boiler']);
+    const fluid = new Set(['pipe', 'pump', 'boiler', 'reactor']);
     const seen = new Set();
     for (const e of this.machines) {
-      if (e.kind === 'boiler') { e.water = 0; e.gens = []; }
+      if (e.kind === 'boiler' || e.kind === 'reactor') { e.water = 0; e.gens = []; }
     }
     for (const start of this.machines) {
       if (!fluid.has(start.kind) || seen.has(start)) continue;
@@ -359,8 +359,9 @@ export class Game {
         }
       }
       const pumps = comp.filter((e) => e.kind === 'pump').length;
-      const boilers = comp.filter((e) => e.kind === 'boiler');
-      const ratio = boilers.length ? Math.min(1, (pumps * PUMP_BOILERS) / boilers.length) : 0;
+      const boilers = comp.filter((e) => e.kind === 'boiler' || e.kind === 'reactor');
+      const need = boilers.reduce((a, e) => a + (e.kind === 'reactor' ? 3 : 1), 0);
+      const ratio = need ? Math.min(1, (pumps * PUMP_BOILERS) / need) : 0;
       for (const b of boilers) b.water = ratio;
     }
     // generadores: cada uno toma vapor de una caldera que lo toque
@@ -633,6 +634,7 @@ function accept(g, e, item, travel) {
       e.inb[item]++;
       return true;
     }
+    case 'reactor':
     case 'fuelgen':
     case 'boiler': {
       if (!FUEL[item] || (e.def.fuels && !e.def.fuels.includes(item))) return false;
@@ -692,6 +694,12 @@ function powerFactor(e) {
 
 function updateMachine(g, e) {
   switch (e.kind) {
+    case 'reactor': {
+      if (e.burning > 0) e.burning--;
+      if (e.water <= 0) e.status = 'nowater';
+      else if (!e.fuel && !(e.energy > 0)) e.status = 'nofuel';
+      break;
+    }
     case 'boiler': {
       if (e.burning > 0) e.burning--;
       e.status = e.water <= 0 ? 'nowater' : (e.fuel > 0 || e.energy > 0) ? (e.burning > 0 ? 'work' : 'idle') : 'nofuel';
