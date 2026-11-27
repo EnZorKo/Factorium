@@ -191,7 +191,7 @@ export class Input {
     if (this.keys.has('s') || this.keys.has('arrowdown')) my += 1;
     if (this.keys.has('a') || this.keys.has('arrowleft')) mx -= 1;
     if (this.keys.has('d') || this.keys.has('arrowright')) mx += 1;
-    this.move = { x: mx, y: my, fast: this.keys.has('shift') };
+    this.moveVec = { x: mx, y: my, fast: this.keys.has("shift") };
   }
 
   key(e, down) {

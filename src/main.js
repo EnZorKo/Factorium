@@ -4,6 +4,7 @@ import { Game, setItemNamer } from './sim.js';
 import { Renderer, PORT_CH, PORT_COLORS } from './render.js';
 import { Input } from './input.js';
 import { buildSprites, toolIcon } from './sprites.js';
+import { sfx, unlockAudio, isMuted, setMuted } from './audio.js';
 import { saveLocal, loadLocal, clearLocal, exportFile, readFile } from './save.js';
 
 const $ = (id) => document.getElementById(id);
@@ -65,6 +66,7 @@ class App {
       if (type === 'changed') this.invDirty = true;
       else if (type === 'milestone') {
         this.toast(`Hito completado: ${data.name}. ¡Nuevos edificios abajo!`);
+        sfx('milestone');
         this.buildToolbar(data.unlocks);
       } else if (type === 'delivered') {
         const now = performance.now();
@@ -75,6 +77,7 @@ class App {
         }
       } else if (type === 'depleted') this.renderer.invalidateTile(data);
       else if (type === 'launch') {
+        sfx('launch');
         if (!this.bench) saveLocal(g);
         setTimeout(() => this.openLaunch(data), 3500);
       }
@@ -122,7 +125,7 @@ class App {
 
   updateDrone(dt) {
     const d = this.game.drone;
-    const m = this.input.move || { x: 0, y: 0 };
+    const m = this.input.moveVec || { x: 0, y: 0 };
     let mx = m.x + this.joy.x, my = m.y + this.joy.y;
     const len = Math.hypot(mx, my);
     if (len > 1) { mx /= len; my /= len; }
@@ -223,11 +226,12 @@ class App {
     const o = this.originFor(type, x, y);
     const c = this.game.check(type, o.x, o.y, this.state.dir);
     if (!c.ok) {
-      if (!silent || c.reason.startsWith('Faltan')) this.hintMsg(c.reason, true);
+      if (!silent || c.reason.startsWith('Faltan')) { this.hintMsg(c.reason, true); sfx('error', 0.4); }
       return;
     }
     const e = this.game.place(type, o.x, o.y, this.state.dir);
     if (e) {
+      sfx(BUILDINGS[type].size === 1 ? 'belt' : 'place');
       for (let i = 0; i < 6; i++) this.renderer.puff((o.x + e.size / 2) * TILE, (o.y + e.size / 2) * TILE, 'dust');
       if (this.moving && this.moving === type) { this.moving = null; this.selectTool(null); }
     }
@@ -237,6 +241,7 @@ class App {
   erase(x, y) {
     const e = this.game.entityAt(x, y);
     if (e && this.game.remove(e)) {
+      sfx('remove', 0.06);
       if (this.state.selected === e) this.closeSheet();
       this.invDirty = true;
     }
@@ -246,6 +251,7 @@ class App {
     const item = this.game.handMine(x, y);
     if (!item) return null;
     this.invDirty = true;
+    sfx('mine');
     this.flashChip(item);
     const d = this.game.drone;
     this.renderer.floater(item, d.x * TILE, d.y * TILE - 20);
@@ -433,6 +439,7 @@ class App {
       const rw = Object.entries(task.reward).map(([k, v]) => `${v} ${ITEMS[k].name}`).join(', ');
       this.toast(`✔ Objetivo cumplido${rw ? ' · Recompensa: ' + rw : ''}`);
       g.task++;
+      sfx('task');
       // el siguiente objetivo cuenta desde cero
       g.stats.delivered = {};
       $('task').classList.remove('done'); void $('task').offsetWidth; $('task').classList.add('done');
@@ -496,6 +503,9 @@ class App {
     $('btnCancel').onclick = () => { this.moving = null; this.selectTool(null); };
     $('btnMilestones').onclick = () => this.openMilestones();
     $('btnMenu').onclick = () => this.openMenu();
+    const unlock = () => unlockAudio();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     $('btnStats').onclick = () => this.openStats();
     $('btnCenter').onclick = () => { this.freeCam = false; };
     $('panelClose').onclick = () => this.closePanel();
@@ -734,12 +744,13 @@ class App {
 
   openMenu() {
     this.showPanel('menu', `<h2>Factorium</h2>
-      <p>Fase 1 · la partida se guarda sola cada 30 segundos y al cerrar.</p>
+      <p>La partida se guarda sola cada 30 segundos y al cerrar.</p>
       <div class="menu-grid">
         <button class="btn" id="mHelp">Cómo se juega</button>
         <button class="btn" id="mSave">Guardar ahora</button>
         <button class="btn" id="mExport">Exportar partida (archivo)</button>
         <button class="btn" id="mImport">Importar partida</button>
+        <button class="btn" id="mSound">${isMuted() ? '🔇 Sonido: no' : '🔊 Sonido: sí'}</button>
         <button class="btn" id="mNew">Nueva partida</button>
       </div>
       <h2 style="margin-top:16px">Controles</h2>
@@ -748,6 +759,7 @@ class App {
         <p><b>Móvil y tablet:</b> joystick mueve el dron · un dedo mira el mapa · dos dedos zoom · elige edificio y toca para colocar · arrastra para trazar cintas · ⟳ girar, ✖ quitar, ✋ soltar.</p>
       </div>`);
     $('mHelp').onclick = () => this.openWelcome();
+    $('mSound').onclick = (ev) => { setMuted(!isMuted()); ev.currentTarget.textContent = isMuted() ? '🔇 Sonido: no' : '🔊 Sonido: sí'; sfx('click'); };
     $('mSave').onclick = () => { this.toast(saveLocal(this.game) ? 'Partida guardada' : 'No se pudo guardar'); };
     $('mExport').onclick = () => exportFile(this.game);
     $('mImport').onclick = () => $('importFile').click();
