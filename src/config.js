@@ -15,6 +15,7 @@ export const ITEMS = {
   musgo:        { name: 'Carbón',              color: '#3a3a3e', dark: '#141416', shape: 'ore' },
   lingFerrico:  { name: 'Lingote de hierro',     color: '#b4b8be', dark: '#5b6067', shape: 'ingot' },
   lingCobalina: { name: 'Lingote de cobre',    color: '#e0884a', dark: '#8a4a22', shape: 'ingot' },
+  acero:        { name: 'Acero',               color: '#7d8a99', dark: '#3a424c', shape: 'ingot' },
   pastilla:     { name: 'Coque',               color: '#5a5a60', dark: '#1e1e22', shape: 'pellet' },
   chapa:        { name: 'Placa de hierro',   color: '#9ea4ab', dark: '#4d5258', shape: 'plate' },
   eje:          { name: 'Varilla de hierro', color: '#c3c7cc', dark: '#5f646a', shape: 'rod' },
@@ -39,6 +40,7 @@ export const FURNACE_RECIPES = {
   ferrita:  { out: 'lingFerrico',  inCount: 1, time: 1.6 },
   cobalina: { out: 'lingCobalina', inCount: 1, time: 1.6 },
   musgo:    { out: 'pastilla',     inCount: 2, time: 2.0 },
+  lingFerrico: { out: 'acero',     inCount: 3, time: 5.0 },
 };
 
 // Recetas de fábrica (se eligen tocando la máquina).
@@ -84,11 +86,16 @@ export const BUILDINGS = {
                   desc: 'Quema carbón o coque y calienta agua. Pon generadores tocándola (hasta 2).' },
   generador:    { name: 'Generador de vapor', kind: 'generator', size: 3, output: 900, cost: { lingFerrico: 30, lingCobalina: 15 }, key: 'g',
                   desc: 'Da 900 kW con el vapor de una caldera que lo toque. Conéctalo a un poste.' },
+  solar:        { name: 'Panel solar',  kind: 'solar',    size: 3, output: 60, cost: { acero: 5, chapa: 10, hilo: 15 }, key: 'l',
+                  desc: 'Da hasta 60 kW de día y nada de noche. Conéctalo a un poste.' },
+  acumulador:   { name: 'Acumulador',   kind: 'battery',  size: 2, capacity: 5000, rate: 300, cost: { acero: 4, hilo: 10, lingCobalina: 10 }, key: 'u',
+                  desc: 'Guarda 5 MJ cuando sobra energía y la devuelve cuando falta (hasta 300 kW).' },
   baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, supply: 6, wire: 9, output: 180, cost: {}, hidden: true,
                   desc: 'Tu base. Todo lo que entra va a tu inventario. Da 180 kW de energía de emergencia a su alrededor.' },
 };
 
 export const FUEL = { musgo: 4000, pastilla: 9000 }; // kJ por unidad
+export const DAY_LEN = 300; // segundos que dura un día completo
 export const PUMP_BOILERS = 4;
 export const BOILER_GENS = 2;
 
@@ -109,12 +116,15 @@ export const MILESTONES = [
   { id: 'ensamblaje', name: 'Ensamblaje', cost: { chapa: 100, eje: 100, hilo: 100 },
     unlocks: ['ensambladora', 'taladro2'],
     text: 'La Ensambladora une piezas: Engranaje, Bobina, Bastidor, Actuador y Unidad de tracción. Y taladros más rápidos.' },
-  { id: 'renovables', name: 'Renovables', cost: null, unlocks: [],
-    text: 'Paneles solares y baterías llegarán en la próxima fase.' },
+  { id: 'renovables', name: 'Renovables', cost: { acero: 100, chapa: 200, hilo: 300 },
+    unlocks: ['solar', 'acumulador'],
+    text: 'Paneles solares (solo de día) y acumuladores para guardar la energía de sobra. El horno ya funde 3 lingotes de hierro en Acero.' },
+  { id: 'petroleo', name: 'Petróleo', cost: null, unlocks: [],
+    text: 'Pozos, refinería y generadores de combustible llegarán en la próxima versión.' },
 ];
 
 // Hoja de ruta de energía (se muestra en Hitos).
-export const ROADMAP = ['Renovables: paneles solares y baterías', 'Petróleo: extracción, refinería y generadores de combustible', 'Nuclear: uranio, reactor e intercambiadores de calor'];
+export const ROADMAP = ['Petróleo: extracción, refinería y generadores de combustible', 'Nuclear: uranio, reactor e intercambiadores de calor'];
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [

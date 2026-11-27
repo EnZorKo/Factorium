@@ -320,7 +320,7 @@ export class Renderer {
     // zonas de energía al colocar algo eléctrico
     const tdef = state.tool && BUILDINGS[state.tool];
     const sel0 = state.selected;
-    if ((tdef && (tdef.power || tdef.kind === 'pole' || tdef.kind === 'generator')) || (sel0 && (sel0.kind === 'pole' || sel0.def.power))) {
+    if ((tdef && (tdef.power || tdef.output || tdef.kind === 'pole' || tdef.kind === 'battery')) || (sel0 && (sel0.kind === 'pole' || sel0.def.power))) {
       ctx.fillStyle = 'rgba(90,160,255,0.10)';
       ctx.strokeStyle = 'rgba(90,160,255,0.35)';
       ctx.lineWidth = 1 / cam.z;
@@ -359,9 +359,9 @@ export class Renderer {
           ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
         }
         // luz de estado
-        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator') {
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery') {
           const st = e.status;
-          const col = st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
+          const col = st === 'discharge' ? '#4fd1bd' : st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
           const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
           if (st === 'nopower') {
             ctx.globalAlpha = blink;
@@ -379,7 +379,7 @@ export class Renderer {
           ctx.globalAlpha = 1;
         }
       }
-      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
+      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
         this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
       }
@@ -440,6 +440,34 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(dxp, dyp, MINE_RANGE * TILE, 0, 7); ctx.stroke();
         ctx.setLineDash([]);
       }
+    }
+
+    // noche: oscurecer y encender luces
+    const light = game.light ?? 1;
+    if (light < 0.98) {
+      ctx.fillStyle = `rgba(8,12,32,${(1 - light) * 0.62})`;
+      ctx.fillRect(x0 * TILE, y0 * TILE, (x1 - x0 + 1) * TILE, (y1 - y0 + 1) * TILE);
+      ctx.globalCompositeOperation = 'lighter';
+      const a = (1 - light) * 0.5;
+      for (const e of big) {
+        const warm = (e.kind === 'furnace' || e.kind === 'boiler') && e.status === 'work';
+        const lamp = e.kind === 'hub' || (e.status === 'work' && e.kind !== 'solar');
+        if (!warm && !lamp) continue;
+        const cx = (e.x + e.size / 2) * TILE, cy = (e.y + e.size / 2) * TILE;
+        const r = (warm ? 2.2 : 1.4) * e.size * TILE * 0.6;
+        const g = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+        g.addColorStop(0, warm ? `rgba(255,140,50,${a})` : `rgba(120,220,200,${a * 0.6})`);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      }
+      if (d) {
+        const cx = d.x * TILE, cy = d.y * TILE, r = 5 * TILE;
+        const g = ctx.createRadialGradient(cx, cy, 4, cx, cy, r);
+        g.addColorStop(0, `rgba(200,230,255,${a * 0.7})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      }
+      ctx.globalCompositeOperation = 'source-over';
     }
 
     // niebla
@@ -546,6 +574,8 @@ export class Renderer {
       case 'pump': return sp.pump[e.status === 'idle' ? 0 : ((t * 12) | 0) % 8];
       case 'boiler': return e.status === 'work' ? sp.boiler.on[e.dir][((t * 8) | 0) % 6] : sp.boiler.off[e.dir];
       case 'generator': return sp.generator[e.status === 'work' ? ((t * 20) | 0) % 12 : 0];
+      case 'solar': return sp.solar;
+      case 'battery': return sp.battery[Math.round(((e.charge || 0) / e.def.capacity) * 5)];
       case 'hub': return sp.hub[((t * 6) | 0) % 12];
     }
     return sp.chest;
@@ -563,7 +593,7 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = g.ok ? 'rgba(80,220,150,0.25)' : 'rgba(240,70,60,0.35)';
     ctx.fillRect(g.x * TILE, g.y * TILE, s, s);
-    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator'].includes(def.kind)) {
+    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery'].includes(def.kind)) {
       const m = (def.size - 1) >> 1, sz = def.size;
       const out = [[g.x + sz, g.y + m], [g.x + sz - 1 - m, g.y + sz], [g.x - 1, g.y + sz - 1 - m], [g.x + m, g.y - 1]][g.dir];
       this.arrow(out[0], out[1], g.dir, 'rgba(255,190,80,0.95)');

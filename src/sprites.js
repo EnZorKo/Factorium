@@ -595,6 +595,45 @@ function generatorSprite(f) {
   return c;
 }
 
+function solarSprite() {
+  const W = S * 3;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  x.fillStyle = '#2b2e31';
+  x.fillRect(4, 4, W - 8, W - 8);
+  x.fillStyle = '#8c9197';
+  x.fillRect(7, 7, W - 14, W - 14);
+  const n = 6, cell = (W - 20) / n;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const g = x.createLinearGradient(10 + i * cell, 10 + j * cell, 10 + (i + 1) * cell, 10 + (j + 1) * cell);
+    g.addColorStop(0, '#2e4f86'); g.addColorStop(1, '#16284a');
+    x.fillStyle = g;
+    x.fillRect(11 + i * cell, 11 + j * cell, cell - 2, cell - 2);
+    x.strokeStyle = 'rgba(160,200,255,0.18)'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(11 + i * cell + cell / 2, 11 + j * cell); x.lineTo(11 + i * cell + cell / 2, 9 + (j + 1) * cell); x.stroke();
+  }
+  x.fillStyle = 'rgba(255,255,255,0.08)';
+  x.beginPath(); x.moveTo(10, 10); x.lineTo(W * 0.6, 10); x.lineTo(10, W * 0.6); x.closePath(); x.fill();
+  return c;
+}
+
+function batterySprite(level) {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#454a50');
+  for (let i = 0; i < 3; i++) {
+    const bx = 18 + i * 32;
+    x.fillStyle = '#1e2022'; x.beginPath(); x.roundRect(bx, 18, 26, 90, 6); x.fill();
+    x.fillStyle = '#5a5e63'; x.fillRect(bx + 8, 12, 10, 8);
+    const h = 82 * level;
+    x.fillStyle = level > 0.25 ? '#5fe08a' : '#f2c14a';
+    x.fillRect(bx + 4, 104 - h, 18, h);
+  }
+  rivets(x, 3, 3, W - 6, W - 6, 8);
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -686,6 +725,8 @@ export function buildSprites() {
   sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
+  sp.solar = solarSprite();
+  sp.battery = Array.from({ length: 6 }, (_, k) => batterySprite(k / 5));
   sp.pump = Array.from({ length: 8 }, (_, f) => pumpSprite(f));
   sp.boiler = { off: [0, 1, 2, 3].map((d) => rotated(boilerSprite(false, 0), d)), on: [0, 1, 2, 3].map((d) => Array.from({ length: 6 }, (_, f) => rotated(boilerSprite(true, f), d))) };
   sp.generator = Array.from({ length: 12 }, (_, f) => generatorSprite(f * (Math.PI * 2 / 0.35) / 12 / 10 * 2));
@@ -713,6 +754,8 @@ export function toolIcon(sp, type) {
     case 'tuberia': { x.fillStyle = '#6b7076'; x.fillRect(4, 18, 40, 12); x.fillStyle = '#9aa0a7'; x.fillRect(4, 20, 40, 3); x.fillStyle = '#3a3d41'; x.fillRect(10, 16, 4, 16); x.fillRect(34, 16, 4, 16); return c.toDataURL(); }
     case 'caldera': img = sp.boiler.on[0][0]; break;
     case 'generador': img = sp.generator[0]; break;
+    case 'solar': img = sp.solar; break;
+    case 'acumulador': img = sp.battery[4]; break;
     default: img = sp.chest;
   }
   x.drawImage(img, 2, 2, 44, 44);

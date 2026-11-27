@@ -1,5 +1,5 @@
 // Simulación: edificios, cintas, flujo de objetos, yacimientos y progreso.
-import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R, FUEL, PUMP_BOILERS, BOILER_GENS } from './config.js';
+import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R, FUEL, PUMP_BOILERS, BOILER_GENS, DAY_LEN } from './config.js';
 import { World, T_WATER } from './world.js';
 
 export const DX = [1, 0, -1, 0];
@@ -308,7 +308,7 @@ export class Game {
     const cover = new Int32Array(w.w * w.h).fill(-1);
     poles.forEach((p, i) => {
       const root = find(i);
-      if (!nets.has(root)) nets.set(root, { id: nets.size, cap: 0, demand: 0, ratio: 0, load: 0, gens: [], hub: false, users: 0 });
+      if (!nets.has(root)) nets.set(root, { id: nets.size, cap: 0, demand: 0, ratio: 0, load: 0, gens: [], solars: [], batts: [], hub: false, users: 0 });
       const net = nets.get(root);
       p.net = net;
       if (p.kind === 'hub') net.hub = true;
@@ -321,12 +321,16 @@ export class Game {
     for (const e of this.machines) {
       if (e.kind === 'pole' || e.kind === 'hub') continue;
       e.net = null;
-      if (!e.def.power && e.kind !== 'generator') continue;
+      if (!e.def.power && !e.def.output && e.kind !== 'battery') continue;
       outer: for (let j = 0; j < e.size; j++) for (let i = 0; i < e.size; i++) {
         const root = cover[(e.y + j) * w.w + e.x + i];
         if (root >= 0) { e.net = nets.get(root); break outer; }
       }
-      if (e.kind === 'generator' && e.net) e.net.gens.push(e);
+      if (e.net) {
+        if (e.kind === 'generator' || e.kind === 'fuelgen' || e.kind === 'reactor') e.net.gens.push(e);
+        else if (e.kind === 'solar') e.net.solars.push(e);
+        else if (e.kind === 'battery') e.net.batts.push(e);
+      }
       if (e.def.power && e.net) e.net.users++;
     }
     this.nets = list;
@@ -378,30 +382,63 @@ export class Game {
     return out;
   }
 
+  // Luz del día (0 noche, 1 mediodía). Un día dura DAY_LEN segundos.
+  daylight() {
+    const t = ((this.tick / UPS) / DAY_LEN + 0.3) % 1; // empieza por la mañana
+    const v = Math.sin(t * Math.PI * 2) * 1.6 + 0.9;
+    return Math.max(0, Math.min(1, v));
+  }
+
   computePower() {
+    const light = this.daylight();
+    this.light = light;
     for (const net of this.nets) {
-      let cap = net.hub ? BUILDINGS.baliza.output : 0;
-      for (const gen of net.gens) {
-        const b = gen.boiler;
-        gen.avail = b && b.water > 0 && (b.energy > 0 || b.fuel > 0) ? gen.def.output * b.water : 0;
-        cap += gen.avail;
+      const D = net.demand;
+      // gratis: Baliza y solar
+      let free = net.hub ? BUILDINGS.baliza.output : 0;
+      let solar = 0;
+      for (const p of net.solars) solar += p.def.output * light;
+      free += solar;
+      // generadores con combustible
+      let G = 0;
+      for (const gen of net.gens) { gen.avail = genAvail(gen); G += gen.avail; }
+      // baterías
+      let room = 0, stored = 0;
+      for (const bt of net.batts) {
+        bt.room = Math.min(bt.def.rate, (bt.def.capacity - bt.charge) * UPS);
+        bt.out = Math.min(bt.def.rate, bt.charge * UPS);
+        room += bt.room; stored += bt.out;
       }
-      net.cap = cap;
-      net.ratio = net.demand > 0 ? Math.min(1, cap / net.demand) : 1;
-      net.load = cap > 0 ? Math.min(1, net.demand / cap) : 0;
-      net.used = Math.min(cap, net.demand);
-      net.lastDemand = net.demand;
+      let genUsed = 0, charge = 0, discharge = 0, ratio = 1;
+      if (free + G >= D) {
+        charge = Math.min(room, free + G - D);
+        genUsed = Math.min(G, Math.max(0, D + charge - free));
+      } else {
+        genUsed = G;
+        discharge = Math.min(stored, D - free - G);
+        ratio = D > 0 ? (free + G + discharge) / D : 1;
+      }
+      // repartir carga/descarga entre baterías
+      for (const bt of net.batts) {
+        if (charge > 0 && room > 0) bt.charge += (bt.room / room) * charge / UPS;
+        if (discharge > 0 && stored > 0) bt.charge -= (bt.out / stored) * discharge / UPS;
+        bt.charge = Math.max(0, Math.min(bt.def.capacity, bt.charge));
+        bt.status = charge > 0 ? 'work' : discharge > 0 ? 'discharge' : 'idle';
+      }
+      for (const p of net.solars) p.status = light > 0.02 ? 'work' : 'idle';
+      net.cap = free + G;
+      net.solar = solar;
+      net.batt = net.batts.reduce((a, b) => a + b.charge, 0);
+      net.battMax = net.batts.reduce((a, b) => a + b.def.capacity, 0);
+      net.discharge = discharge;
+      net.ratio = Math.min(1, ratio);
+      net.lastDemand = D;
       net.demand = 0;
-      // gastar combustible
+      const load = G > 0 ? genUsed / G : 0;
       for (const gen of net.gens) {
-        const b = gen.boiler;
-        const kw = (gen.avail || 0) * net.load;
+        const kw = gen.avail * load;
         gen.status = kw > 0 ? 'work' : 'idle';
-        if (!b || kw <= 0) continue;
-        b.energy -= kw / UPS;
-        b.burning = 30;
-        while (b.energy <= 0 && b.fuel > 0) { b.fuel--; b.energy += FUEL[b.fuelType]; if (!b.fuel) b.lastFuel = b.fuelType; }
-        if (b.energy < 0) b.energy = 0;
+        if (kw > 0) genDraw(gen, kw);
       }
     }
   }
@@ -453,7 +490,8 @@ export class Game {
       else if (e.kind === 'chest') rec.push(e.store);
       else if (e.kind === 'furnace') rec.push([e.inType, e.inCount, e.outType, e.outCount, e.progress]);
       else if (e.kind === 'crafter') rec.push([e.recipe, e.inb, e.outCount, e.progress]);
-      else if (e.kind === 'boiler') rec.push([e.fuelType, e.fuel, e.energy]);
+      else if (e.kind === 'boiler' || e.kind === 'fuelgen' || e.kind === 'reactor') rec.push([e.fuelType, e.fuel, e.energy]);
+      else if (e.kind === 'battery') rec.push(e.charge);
       else if (e.kind === 'miner' || e.kind === 'splitter') rec.push(e.buf);
       ents.push(rec);
     }
@@ -489,7 +527,8 @@ export class Game {
       else if (e.kind === 'chest') { e.store = extra; e.total = Object.values(extra).reduce((a, b) => a + b, 0); }
       else if (e.kind === 'furnace') [e.inType, e.inCount, e.outType, e.outCount, e.progress] = extra;
       else if (e.kind === 'crafter') { g.setRecipe(e, extra[0]); Object.assign(e.inb, extra[1]); e.outCount = extra[2]; e.progress = extra[3]; }
-      else if (e.kind === 'boiler') [e.fuelType, e.fuel, e.energy] = extra;
+      else if (e.kind === 'boiler' || e.kind === 'fuelgen' || e.kind === 'reactor') [e.fuelType, e.fuel, e.energy] = extra;
+      else if (e.kind === 'battery') e.charge = extra;
       else e.buf = extra;
     }
     g.inv = Object.fromEntries(ITEM_IDS.map((id) => [id, data.inv[id] || 0]));
@@ -551,6 +590,8 @@ function initEntity(e, g) {
     case 'splitter': e.buf = null; e.rr = 0; break;
     case 'boiler': e.fuelType = null; e.fuel = 0; e.energy = 0; e.water = 0; e.gens = []; e.burning = 0; break;
     case 'generator': e.boiler = null; e.avail = 0; break;
+    case 'solar': e.status = 'idle'; break;
+    case 'battery': e.charge = 0; e.status = 'idle'; break;
     case 'hub': break;
   }
 }
@@ -615,6 +656,26 @@ function accept(g, e, item, travel) {
     }
     default: return false;
   }
+}
+
+// Potencia disponible de un generador ahora mismo (kW).
+function genAvail(gen) {
+  if (gen.kind === 'generator') {
+    const b = gen.boiler;
+    return b && b.water > 0 && (b.energy > 0 || b.fuel > 0) ? gen.def.output * b.water : 0;
+  }
+  if (gen.kind === 'reactor' && !(gen.water > 0)) return 0;
+  return gen.energy > 0 || gen.fuel > 0 ? gen.def.output * (gen.kind === 'reactor' ? gen.water : 1) : 0;
+}
+
+// Gasta combustible por entregar kw durante un tick.
+function genDraw(gen, kw) {
+  const b = gen.kind === 'generator' ? gen.boiler : gen;
+  if (!b) return;
+  b.energy -= kw / UPS;
+  b.burning = 30;
+  while (b.energy <= 0 && b.fuel > 0) { b.fuel--; b.energy += FUEL[b.fuelType]; }
+  if (b.energy < 0) b.energy = 0;
 }
 
 // Factor de energía de la máquina: 1 = a tope, 0 = sin energía. Anota la demanda.

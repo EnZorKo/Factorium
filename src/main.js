@@ -105,6 +105,7 @@ class App {
       f.frames = f.steps = f.simMs = f.drawMs = f.t = 0;
       if (!$('debug').classList.contains('hidden')) this.updateDebug();
       this.refreshTask();
+      this.updateClock();
       if (this.state.selected) this.renderSheet();
     }
     if (this.renderer.frame % 8 === 0) this.renderer.drawMinimap($('minimap'), this.state);
@@ -151,6 +152,13 @@ class App {
   inMineRange(x, y) {
     const d = this.game.drone;
     return Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y) <= MINE_RANGE;
+  }
+
+  updateClock() {
+    const l = this.game.light ?? 1;
+    const t = (((this.game.tick / UPS) / 300 + 0.3) % 1);
+    const txt = `${l > 0.02 ? '☀' : '☾'} ${String(Math.floor((t * 24 + 6) % 24)).padStart(2, '0')}:00`;
+    if ($('clock').textContent !== txt) $('clock').textContent = txt;
   }
 
   updateDebug() {
@@ -272,10 +280,11 @@ class App {
     let h = `<h3>${d.name} ${DIR_NAMES[e.dir]}</h3>`;
     if (st && e.kind !== 'chest' && e.kind !== 'belt' && e.kind !== 'splitter') h += `<div class="status ${st[0]}">● ${st[1]}</div>`;
     const net = e.net;
-    if (e.def.power || e.kind === 'pole' || e.kind === 'generator') {
+    if (e.def.power || e.def.output || e.kind === 'pole' || e.kind === 'battery') {
       if (net) {
-        const pct = net.lastDemand ? Math.min(100, (net.cap / net.lastDemand) * 100) : 100;
-        h += `<div class="help">⚡ Red: produce <b>${net.cap.toFixed(0)} kW</b> · consume <b>${(net.lastDemand || 0).toFixed(0)} kW</b>${net.lastDemand > net.cap ? ` · <span class="bad">las máquinas van al ${pct.toFixed(0)}%</span>` : ''}</div>`;
+        const pct = (net.ratio * 100).toFixed(0);
+        h += `<div class="help">⚡ Red: puede dar <b>${net.cap.toFixed(0)} kW</b>${net.solar > 0 ? ` (solar ${net.solar.toFixed(0)})` : ''} · consume <b>${(net.lastDemand || 0).toFixed(0)} kW</b>${net.ratio < 1 ? ` · <span class="bad">las máquinas van al ${pct}%</span>` : ''}</div>`;
+        if (net.battMax) h += `<div class="help">🔋 Acumuladores: ${(net.batt / 1000).toFixed(1)} / ${(net.battMax / 1000).toFixed(0)} MJ${net.discharge > 0 ? ` · aportando ${net.discharge.toFixed(0)} kW` : ''}</div>`;
       } else if (e.kind !== 'pole') h += `<div class="help bad">⚡ No está conectado a ninguna red</div>`;
       if (e.def.power) h += `<div class="help">Consume ${e.def.power} kW</div>`;
     }
@@ -286,6 +295,8 @@ class App {
         break;
       }
       case 'generator': h += `<div class="help">${e.boiler ? `Recibe vapor de una caldera · da ${(e.avail || 0).toFixed(0)} kW disponibles` : '<span class="bad">Necesita una caldera tocándolo</span>'}</div>`; break;
+      case 'solar': h += `<div class="help">Ahora da ${(e.def.output * (this.game.light || 0)).toFixed(0)} de 60 kW (${this.game.light > 0.02 ? 'de día' : 'de noche'}).</div>`; break;
+      case 'battery': h += `<div class="help">Carga: ${((e.charge / e.def.capacity) * 100).toFixed(0)}% · ${e.status === 'work' ? 'cargando' : e.status === 'discharge' ? 'descargando' : 'en reposo'}</div>`; break;
       case 'pump': h += '<div class="help">Saca agua para hasta 4 calderas conectadas con tuberías.</div>'; break;
       case 'pipe': h += '<div class="help">Une bombas y calderas.</div>'; break;
       case 'pole': h += '<div class="help">Da energía a lo que esté en su zona azul y se conecta solo a postes cercanos (hasta 9 casillas).</div>'; break;
@@ -302,7 +313,7 @@ class App {
         h += e.inType ? this.slot(e.inType, e.inCount) : '<span class="slot">vacío</span>';
         h += '<span class="arrow">→</span>';
         h += e.outCount ? this.slot(e.outType, e.outCount) : '<span class="slot">—</span>';
-        h += '</div><div class="help">Mineral de hierro → Lingote de hierro · Mineral de cobre → Lingote de cobre · 2 Carbón → Coque</div>';
+        h += '</div><div class="help">Mineral de hierro → Lingote de hierro · Mineral de cobre → Lingote de cobre · 2 Carbón → Coque · 3 Lingote de hierro → Acero</div>';
         break;
       }
       case 'crafter': {

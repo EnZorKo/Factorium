@@ -140,3 +140,4 @@ canvas#game { position: fixed; inset: 0; touch-action: none; display: block; }
 @media (max-width: 700px) { body.sheet-open #actions, body.sheet-open #joy, body.sheet-open #hint { display: none !important; } }
 .st-power { color: #5aa0ff; }
 .help.bad, .bad { color: var(--bad); }
+.clock { align-self: center; background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 6px 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
