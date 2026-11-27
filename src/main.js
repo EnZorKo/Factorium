@@ -1,5 +1,5 @@
 // Arranque, bucle principal y la interfaz (HUD, dron, objetivos y paneles).
-import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE, ROADMAP, FUEL } from './config.js';
+import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE, ROADMAP, FUEL, LAUNCHES } from './config.js';
 import { Game, setItemNamer } from './sim.js';
 import { Renderer, PORT_CH, PORT_COLORS } from './render.js';
 import { Input } from './input.js';
@@ -17,6 +17,7 @@ const STATUS_TEXT = {
   nopower: ['st-power', 'Sin energía: ponle un poste cerca conectado a la red'],
   nowater: ['st-full', 'Sin agua: conéctala con tuberías a una bomba'],
   nofuel: ['st-idle', 'Sin combustible: llévale carbón o coque'],
+  done: ['st-work', 'Proyecto final completado'],
   nodest: ['st-full', 'Sin destino: pon otro puerto del mismo canal en modo Recibir (y con sitio)'],
 };
 setItemNamer((k) => ITEMS[k].name);
@@ -73,6 +74,10 @@ class App {
           this.renderer.floater(data, (h.x + 1.5 + (Math.random() - 0.5)) * TILE, (h.y + 1) * TILE);
         }
       } else if (type === 'depleted') this.renderer.invalidateTile(data);
+      else if (type === 'launch') {
+        if (!this.bench) saveLocal(g);
+        setTimeout(() => this.openLaunch(data), 3500);
+      }
     });
     if (this.renderer.game !== g) this.renderer.setGame(g);
     this.freeCam = false;
@@ -351,6 +356,17 @@ class App {
           : `Saca por la flecha lo que traen los drones del canal ${PORT_CH[e.ch]} (${peers} puertos envían aquí). Apúntalo a la Baliza o a una cinta.`}</div>`;
         break;
       }
+      case 'launcher': {
+        const need = LAUNCHES[this.game.launches];
+        h += `<div class="status">Lanzamientos: <b>${this.game.launches} de ${LAUNCHES.length}</b></div>`;
+        if (need) {
+          h += `<div class="slots">${this.slot('modulo', `${e.mods}/${need}`)}</div>`;
+          h += `<div class="bar"><i style="width:${((e.mods / need) * 100) | 0}%"></i></div>`;
+          h += `<div class="help">${e.mods < need ? `Llévale Módulos orbitales por cinta. Este lanzamiento necesita ${need}.` : `Cargando la catapulta: ${((e.charge * 100) | 0)}%`}</div>`;
+          if (e.charge > 0) h += `<div class="bar"><i style="width:${(e.charge * 100) | 0}%;background:#4fd1bd"></i></div>`;
+        } else h += '<div class="help">¡Has completado los 4 lanzamientos! Veyra ya tiene su enlace orbital. Puedes seguir ampliando la fábrica.</div>';
+        break;
+      }
       case 'belt': h += `<div class="help">${(d.speed * 60).toFixed(0)} objetos por minuto. Las cintas pueden recibir por los lados.</div>`; break;
       case 'splitter': h += `<div class="help">Lo que entra por detrás sale por delante, izquierda y derecha, por turnos.</div>`; break;
     }
@@ -406,7 +422,7 @@ class App {
     const task = TASKS[g.task];
     if (!task) {
       $('taskNum').textContent = 'Objetivos completados';
-      $('taskText').textContent = 'Has cumplido todos los objetivos de la fase 1.';
+      $('taskText').textContent = 'Has cumplido todos los objetivos. Queda la Catapulta orbital.';
       $('taskBar').style.width = '100%';
       $('taskCount').textContent = '';
       return;
@@ -642,7 +658,11 @@ class App {
     } else if (next) {
       body = `<h2>${next.name}</h2><p>${next.text}</p>`;
     }
-    body += `<b>Próximas etapas de energía</b><ul class="help">${ROADMAP.map((r) => `<li>${r}</li>`).join('')}</ul>`;
+    if (ROADMAP.length) body += `<b>Próximamente</b><ul class="help">${ROADMAP.map((r) => `<li>${r}</li>`).join('')}</ul>`;
+    if (g.unlocked.has('catapulta')) {
+      const need = LAUNCHES[g.launches];
+      body += `<h2>Catapulta orbital</h2><p>Lanzamientos: <b>${g.launches} de ${LAUNCHES.length}</b>${need ? ` · el siguiente necesita ${need} Módulos orbitales` : ' · ¡completado!'}</p>`;
+    } else if (!next) body += '<p class="help">Has desbloqueado todo.</p>';
     body += `<p class="help">Los materiales salen de tu inventario. Llévalos a la Baliza con cintas: todo lo que entra se suma.</p><b>Completados</b><ul class="done-list">${done}</ul>`;
     const box = document.querySelector('.panel-box');
     const scroll = $('panel').classList.contains('hidden') ? 0 : box.scrollTop;
@@ -650,6 +670,21 @@ class App {
     box.scrollTop = scroll;
     const btn = $('btnDeliver');
     if (btn) btn.onclick = () => { if (g.completeMilestone()) { saveLocal(g); this.openMilestones(); } };
+  }
+
+  openLaunch(n) {
+    const total = LAUNCHES.length;
+    if (n >= total) {
+      this.showPanel('launch', `<h2>¡Proyecto final completado!</h2>
+        <p>Los ${total} cargamentos de Módulos orbitales ya están en órbita. Tu fábrica en Veyra ha cumplido su misión.</p>
+        <p class="help">Tiempo de juego: ${Math.floor(this.game.tick / UPS / 3600)} h ${Math.floor((this.game.tick / UPS / 60) % 60)} min. Puedes seguir jugando y ampliando la fábrica.</p>
+        <button class="btn primary" id="lGo" style="width:100%">Seguir jugando</button>`);
+    } else {
+      this.showPanel('launch', `<h2>Lanzamiento ${n} de ${total}</h2>
+        <p>¡Cargamento en órbita! El siguiente necesita <b>${LAUNCHES[n]} Módulos orbitales</b>.</p>
+        <button class="btn primary" id="lGo" style="width:100%">Seguir</button>`);
+    }
+    $('lGo').onclick = () => this.closePanel();
   }
 
   // ---------- Estadísticas ----------

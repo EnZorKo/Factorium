@@ -2,16 +2,16 @@
 
 Juego de automatización 2D con vista cenital, para navegador (PC y tablet). Estás en Veyra, un planeta alienígena: extraes recursos, los transportas con cintas, los fundes y vas desbloqueando hitos hasta el gran proyecto final. Sin enemigos. El mundo, las máquinas, las recetas y el arte son originales.
 
-## Estado: fase 1 (base)
+## Qué hay
 
 - Manejas un dron (WASD en PC, joystick en móvil) que explora el mapa. La niebla oculta lo que no has descubierto.
-- Mapa con biomas, lagos y yacimientos finitos de hierro, cobre y carbón. Los más lejanos son más grandes y ricos.
-- Edificios: Cinta, Cinta Mk2, Taladro, Taladro Mk2, Horno, Prensa, Ensambladora, Caja, Divisor y la Baliza de aterrizaje.
-- 14 objetos y recetas encadenadas: mineral → lingote → placa, varilla y cable → engranaje, bobina y bastidor → actuador → unidad de tracción.
-- 8 objetivos de entrega de piezas elaboradas en grandes cantidades (por ejemplo, 800 Actuadores), con recompensa, y 4 hitos que desbloquean edificios.
-- Energía: la Baliza da 180 kW de emergencia; luego central de vapor (bomba de agua, tuberías, caldera de carbón o coque y generador de 900 kW) y postes con cables. Las máquinas consumen y van más lentas si falta energía. Próximas etapas: renovables, petróleo y nuclear.
-- Máquinas con luz de estado, humo, chispas y panel al tocarlas (receta, contenido, girar, mover y quitar).
-- Minimapa, autoguardado cada 30 s y al cerrar, y exportar/importar partida.
+- Mapa con biomas, lagos y yacimientos finitos de hierro, cobre, carbón, petróleo y uranio. Los más lejanos son más grandes y ricos.
+- 25 objetos con recetas encadenadas: mineral → lingote → placa, varilla, cable y acero → engranaje, bobina, bastidor, actuador, unidad de tracción → plástico, circuito, placa compuesta, núcleo de control, celda nuclear → módulo orbital.
+- Energía por etapas: Baliza (180 kW), vapor con carbón y agua, paneles solares y acumuladores, generador de combustible y reactor nuclear.
+- Logística a distancia: puertos de drones con 6 canales.
+- Estadísticas de producción, consumo y energía (tecla E).
+- 10 hitos, 12 objetivos de entrega en grandes cantidades y un proyecto final: la Catapulta orbital, con 4 lanzamientos.
+- Ciclo de día y noche, minimapa, autoguardado cada 30 s y al cerrar, y exportar/importar partida.
 
 ## Jugar en local
 

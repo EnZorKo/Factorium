@@ -32,6 +32,10 @@ export const ITEMS = {
   bastidor:     { name: 'Bastidor',            color: '#8f969d', dark: '#3f4349', shape: 'frame' },
   actuador:     { name: 'Actuador',            color: '#e08a3c', dark: '#4a4e53', shape: 'actuator' },
   traccion:     { name: 'Unidad de tracción',  color: '#4fd1bd', dark: '#2b2e31', shape: 'drive' },
+  // (los objetos nuevos van siempre al final para no romper partidas guardadas)
+  compuesto:    { name: 'Placa compuesta',     color: '#5f8f9a', dark: '#24393e', shape: 'composite' },
+  nucleo:       { name: 'Núcleo de control',   color: '#ffd27a', dark: '#2b2e31', shape: 'core' },
+  modulo:       { name: 'Módulo orbital',      color: '#e8ecef', dark: '#3a3d42', shape: 'module' },
 };
 export const ITEM_IDS = Object.keys(ITEMS);
 
@@ -67,6 +71,9 @@ export const RECIPES = {
   u235:      { machine: 'centrifugadora', in: { uranio: 10 },          out: 'u235',      n: 1, time: 10.0 },
   celda:     { machine: 'ensambladora', in: { u235: 1, acero: 5, circuito: 2 }, out: 'celda', n: 1, time: 8.0 },
   traccion:  { machine: 'ensambladora', in: { bastidor: 1, actuador: 2, hilo: 10 }, out: 'traccion', n: 1, time: 12.0 },
+  compuesto: { machine: 'ensambladora', in: { acero: 2, plastico: 2 },  out: 'compuesto', n: 1, time: 4.0 },
+  nucleo:    { machine: 'ensambladora', in: { circuito: 3, bobina: 2, compuesto: 1 }, out: 'nucleo', n: 1, time: 8.0 },
+  modulo:    { machine: 'ensambladora', in: { compuesto: 4, nucleo: 2, traccion: 1, celda: 1 }, out: 'modulo', n: 1, time: 20.0 },
 };
 
 // Edificios. size en casillas; cost en objetos del inventario.
@@ -116,6 +123,8 @@ export const BUILDINGS = {
                   desc: 'Da 10 MW quemando celdas nucleares. Necesita mucha agua: conéctalo con tuberías a bombas (cuenta como 3 calderas).' },
   puerto:       { name: 'Puerto de drones', kind: 'port', size: 2, capacity: 400, load: 50, speed: 12, power: 120, cost: { acero: 30, circuito: 10, actuador: 6 }, key: 'y',
                   desc: 'Un dron de carga lleva lo que le entra por cinta a otro puerto del mismo canal en modo Recibir, esté donde esté. Gasta energía mientras vuela.' },
+  catapulta:    { name: 'Catapulta orbital', kind: 'launcher', size: 5, power: 2500, cost: { acero: 800, compuesto: 300, nucleo: 100, traccion: 50 }, key: 'j',
+                  desc: 'El proyecto final. Llénala de Módulos orbitales por cinta y los lanza al espacio cargando 30 s con 2,5 MW. Son 4 lanzamientos.' },
   baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, supply: 6, wire: 9, output: 180, cost: {}, hidden: true,
                   desc: 'Tu base. Todo lo que entra va a tu inventario. Da 180 kW de energía de emergencia a su alrededor.' },
 };
@@ -154,10 +163,16 @@ export const MILESTONES = [
   { id: 'nuclear', name: 'Nuclear', cost: { circuito: 300, acero: 500, traccion: 40 },
     unlocks: ['centrifugadora', 'reactor'],
     text: 'Mina el uranio (verde), enriquécelo en la Centrifugadora, haz Celdas en la Ensambladora y quémalas en un Reactor de 10 MW refrigerado con agua.' },
+  { id: 'orbital', name: 'Proyecto final', cost: { compuesto: 400, nucleo: 150, celda: 30 },
+    unlocks: ['catapulta'],
+    text: 'Construye la Catapulta orbital y lanza 4 cargamentos de Módulos orbitales (20, 40, 60 y 100). Placa compuesta = acero + plástico; Núcleo de control = circuitos + bobinas + placa compuesta; Módulo = placas compuestas + núcleos + tracción + celda.' },
 ];
 
 // Hoja de ruta de energía (se muestra en Hitos).
-export const ROADMAP = ['Proyecto final'];
+export const ROADMAP = [];
+// Proyecto final: módulos que necesita cada uno de los 4 lanzamientos.
+export const LAUNCHES = [20, 40, 60, 100];
+export const LAUNCH_CHARGE = 30; // segundos de carga
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [
@@ -168,7 +183,11 @@ export const TASKS = [
   { item: 'actuador',  n: 250, reward: { chapa: 200 } },
   { item: 'traccion',  n: 100, reward: { eje: 300 } },
   { item: 'actuador',  n: 800, reward: { hilo: 500 } },
-  { item: 'traccion',  n: 400, reward: {} },
+  { item: 'traccion',  n: 400, reward: { acero: 500 } },
+  { item: 'circuito',  n: 1000, reward: { plastico: 400 } },
+  { item: 'compuesto', n: 1500, reward: { traccion: 50 } },
+  { item: 'nucleo',    n: 600, reward: { celda: 20 } },
+  { item: 'modulo',    n: 100, reward: {} },
 ];
 
 export const START_INVENTORY = { lingFerrico: 60, lingCobalina: 20, ferrita: 24 };

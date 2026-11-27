@@ -225,6 +225,36 @@ function itemIcon(id, size = 32) {
     for (let i = 0; i < 6; i++) x.fillRect(8, 9 + i * 2.5, 16, 1.6);
     x.fillStyle = '#6b7076';
     x.fillRect(5, 6, 22, 3); x.fillRect(5, 23, 22, 3);
+  } else if (it.shape === 'composite') {
+    for (let i = 0; i < 3; i++) {
+      x.fillStyle = i === 2 ? it.color : it.dark;
+      x.beginPath(); x.moveTo(16, 6 + i * 3); x.lineTo(27, 11 + i * 3); x.lineTo(16, 16 + i * 3); x.lineTo(5, 11 + i * 3); x.closePath(); x.fill();
+      x.shadowColor = 'transparent';
+    }
+    x.strokeStyle = 'rgba(255,255,255,0.4)'; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(9, 17); x.lineTo(16, 20.5); x.lineTo(23, 17); x.stroke();
+  } else if (it.shape === 'core') {
+    x.fillStyle = it.dark;
+    x.beginPath();
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + Math.PI / 8; x.lineTo(16 + Math.cos(a) * 12, 16 + Math.sin(a) * 12); }
+    x.closePath(); x.fill();
+    x.shadowColor = 'transparent';
+    x.strokeStyle = '#8c9197'; x.lineWidth = 1.5; x.stroke();
+    const g = x.createRadialGradient(16, 16, 1, 16, 16, 7);
+    g.addColorStop(0, '#fff6d8'); g.addColorStop(1, it.color);
+    x.fillStyle = g; x.beginPath(); x.arc(16, 16, 6, 0, 7); x.fill();
+    x.fillStyle = '#3fae5a';
+    for (let i = 0; i < 4; i++) { const a = (i / 4) * Math.PI * 2; x.fillRect(16 + Math.cos(a) * 9.5 - 1.5, 16 + Math.sin(a) * 9.5 - 1.5, 3, 3); }
+  } else if (it.shape === 'module') {
+    x.fillStyle = it.dark;
+    x.beginPath(); x.roundRect(9, 4, 14, 24, 6); x.fill();
+    x.shadowColor = 'transparent';
+    const g = x.createLinearGradient(9, 0, 23, 0);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#9aa0a7');
+    x.fillStyle = g; x.beginPath(); x.roundRect(10, 5, 12, 21, 5); x.fill();
+    x.fillStyle = '#e08a3c'; x.fillRect(10, 18, 12, 3);
+    x.fillStyle = '#4fd1bd'; x.beginPath(); x.arc(16, 11, 2.5, 0, 7); x.fill();
+    x.fillStyle = '#5a5e63'; x.beginPath(); x.moveTo(10, 22); x.lineTo(6, 28); x.lineTo(10, 27); x.fill(); x.beginPath(); x.moveTo(22, 22); x.lineTo(26, 28); x.lineTo(22, 27); x.fill();
   }
   return c;
 }
@@ -803,6 +833,44 @@ function portSprite() {
   return c;
 }
 
+// Catapulta orbital (5×5): anillo de bobinas que se ilumina al cargar.
+function launcherSprite(charge) {
+  const W = S * 5;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  x.fillStyle = '#26272a'; x.fillRect(3, 3, W - 6, W - 6);
+  for (let j = 0; j < 10; j++) for (let i = 0; i < 10; i++) {
+    const h = hash2(i, j, 17);
+    x.fillStyle = `rgb(${104 + h * 22},${106 + h * 22},${104 + h * 20})`;
+    x.fillRect(6 + i * 31, 6 + j * 31, 29, 29);
+  }
+  hazard(x, 6, 6, W - 12, 14);
+  hazard(x, 6, W - 20, W - 12, 14);
+  const C = W / 2;
+  // anillo exterior de bobinas
+  x.fillStyle = '#1b1d1f'; x.beginPath(); x.arc(C, C, 128, 0, 7); x.fill();
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    x.save(); x.translate(C + Math.cos(a) * 110, C + Math.sin(a) * 110); x.rotate(a);
+    x.fillStyle = '#4a4e53'; x.fillRect(-12, -9, 24, 18);
+    x.fillStyle = '#c87a3a'; for (let k = 0; k < 5; k++) x.fillRect(-10 + k * 4.4, -8, 2.6, 16);
+    const lit = charge > i / 16;
+    x.fillStyle = lit ? '#7ff5e2' : '#203a37'; x.fillRect(-12, -2, 4, 4);
+    x.restore();
+  }
+  // cuna central
+  x.fillStyle = '#3a3d41'; x.beginPath(); x.arc(C, C, 86, 0, 7); x.fill();
+  const g = x.createRadialGradient(C, C, 10, C, C, 84);
+  const k = 0.12 + charge * 0.75;
+  g.addColorStop(0, `rgba(160,255,240,${k})`); g.addColorStop(0.7, `rgba(79,209,189,${k * 0.5})`); g.addColorStop(1, 'rgba(20,40,40,0.1)');
+  x.fillStyle = g; x.beginPath(); x.arc(C, C, 84, 0, 7); x.fill();
+  x.strokeStyle = '#8c9197'; x.lineWidth = 6;
+  for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2 - Math.PI / 2; x.beginPath(); x.moveTo(C + Math.cos(a) * 40, C + Math.sin(a) * 40); x.lineTo(C + Math.cos(a) * 84, C + Math.sin(a) * 84); x.stroke(); }
+  x.strokeStyle = '#5a5e63'; x.lineWidth = 4; x.beginPath(); x.arc(C, C, 40, 0, 7); x.stroke();
+  grime(x, W, W, 171, 0.1);
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -922,6 +990,7 @@ export function buildSprites() {
   sp.press = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pressSprite(f), d)));
   sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
   sp.port = portSprite();
+  sp.launcher = Array.from({ length: 6 }, (_, k) => launcherSprite(k / 5));
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
   sp.solar = solarSprite();
@@ -966,6 +1035,7 @@ export function toolIcon(sp, type) {
     case 'genComb': img = sp.fuelgen[0]; break;
     case 'acumulador': img = sp.battery[4]; break;
     case 'puerto': img = sp.port; break;
+    case 'catapulta': img = sp.launcher[3]; break;
     default: img = sp.chest;
   }
   x.drawImage(img, 2, 2, 44, 44);

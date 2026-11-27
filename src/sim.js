@@ -1,5 +1,5 @@
 // Simulación: edificios, cintas, flujo de objetos, yacimientos y progreso.
-import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R, FUEL, PUMP_BOILERS, BOILER_GENS, DAY_LEN } from './config.js';
+import { BUILDINGS, FURNACE_RECIPES, RECIPES, RESOURCES, MILESTONES, START_INVENTORY, UPS, ITEM_IDS, REVEAL_R, FUEL, PUMP_BOILERS, BOILER_GENS, DAY_LEN, LAUNCHES, LAUNCH_CHARGE } from './config.js';
 import { World, T_WATER } from './world.js';
 
 export const DX = [1, 0, -1, 0];
@@ -26,6 +26,7 @@ export class Game {
     this.unlocked = new Set(MILESTONES[0].unlocks);
     this.stats = { mined: {}, built: {}, delivered: {} };
     this.task = 0;
+    this.launches = 0;
     this.depleted = new Set(); // casillas cuya cantidad cambió (para guardar)
     this.listeners = new Set();
     // estadísticas: lo producido/consumido en el tramo actual de 10 s y el historial
@@ -527,7 +528,8 @@ export class Game {
     for (const e of this.ents) {
       if (!e || e.kind === 'hub') continue;
       const rec = [e.type, e.x, e.y, e.dir];
-      if (e.kind === 'belt') rec.push(e.it.map((t, i) => [t, +e.ip[i].toFixed(3)]));
+      if (e.kind === 'belt') rec.push(e.it.map((t, i) => [ITEM_IDS[t], +e.ip[i].toFixed(3)]));
+      else if (e.kind === 'launcher') rec.push([e.mods, e.charge]);
       else if (e.kind === 'chest') rec.push(e.store);
       else if (e.kind === 'port') rec.push([e.mode, e.ch, e.store, e.fly && !e.fly.back ? [e.fly.item, e.fly.n] : null]);
       else if (e.kind === 'furnace') rec.push([e.inType, e.inCount, e.outType, e.outCount, e.progress]);
@@ -541,7 +543,7 @@ export class Game {
     const dep = [];
     for (const k of this.depleted) dep.push(k, w.amount[k]);
     return {
-      v: 2, seed: w.seed, tick: this.tick, inv: this.inv, milestone: this.milestone, task: this.task,
+      v: 2, seed: w.seed, tick: this.tick, inv: this.inv, milestone: this.milestone, task: this.task, launches: this.launches,
       stats: this.stats, drone: { x: this.drone.x, y: this.drone.y }, ents, dep, fog: packBits(w.explored),
     };
   }
@@ -565,7 +567,13 @@ export class Game {
     for (const [type, x, y, dir, extra] of data.ents) {
       const e = g.place(type, x, y, dir, true);
       if (!e || extra == null) continue;
-      if (e.kind === 'belt') for (const [t, p] of extra) { e.it.push(t); e.ip.push(p); }
+      if (e.kind === 'belt') {
+        for (const [t, p] of extra) {
+          const n = typeof t === 'string' ? ITEM_NUM[t] : t;
+          if (n == null || n >= ITEM_IDS.length) continue;
+          e.it.push(n); e.ip.push(p);
+        }
+      } else if (e.kind === 'launcher') [e.mods, e.charge] = extra;
       else if (e.kind === 'chest') { e.store = extra; e.total = Object.values(extra).reduce((a, b) => a + b, 0); }
       else if (e.kind === 'port') {
         [e.mode, e.ch, e.store] = extra;
@@ -581,6 +589,7 @@ export class Game {
     g.inv = Object.fromEntries(ITEM_IDS.map((id) => [id, data.inv[id] || 0]));
     g.stats = data.stats || g.stats;
     g.task = data.task || 0;
+    g.launches = data.launches || 0;
     if (data.drone) Object.assign(g.drone, data.drone);
     return g;
   }
@@ -641,6 +650,7 @@ function initEntity(e, g) {
     case 'solar': e.status = 'idle'; break;
     case 'battery': e.charge = 0; e.status = 'idle'; break;
     case 'fuelgen': case 'reactor': e.fuelType = null; e.fuel = 0; e.energy = 0; e.burning = 0; e.water = 0; e.status = 'idle'; break;
+    case 'launcher': e.mods = 0; e.charge = 0; e.fx = 0; break;
     case 'hub': break;
   }
 }
@@ -697,6 +707,12 @@ function accept(g, e, item, travel) {
     case 'port': {
       if (e.mode !== 'send' || e.total >= e.def.capacity) return false;
       e.store[item] = (e.store[item] || 0) + 1; e.total++;
+      return true;
+    }
+    case 'launcher': {
+      const need = LAUNCHES[g.launches];
+      if (item !== 'modulo' || !need || e.mods >= need) return false;
+      e.mods++;
       return true;
     }
     case 'splitter': {
@@ -827,6 +843,23 @@ function updateMachine(g, e) {
       break;
     }
     case 'port': updatePort(g, e); break;
+    case 'launcher': {
+      if (e.fx > 0) e.fx -= 1 / UPS;
+      const need = LAUNCHES[g.launches];
+      if (!need) { e.status = 'done'; break; }
+      if (e.mods < need) { e.status = 'idle'; break; }
+      const f = powerFactor(e);
+      e.status = f > 0 ? 'work' : 'nopower';
+      e.charge += f / (LAUNCH_CHARGE * UPS);
+      if (e.charge >= 1) {
+        e.charge = 0;
+        e.mods -= need;
+        e.fx = 5;
+        g.launches++;
+        g.emit('launch', g.launches);
+      }
+      break;
+    }
     case 'splitter': {
       if (!e.buf) break;
       const dirs = [e.dir, (e.dir + 3) % 4, (e.dir + 1) % 4];

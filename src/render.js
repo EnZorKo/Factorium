@@ -362,7 +362,7 @@ export class Renderer {
           ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
         }
         // luz de estado
-        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery' || e.kind === 'fuelgen' || e.kind === 'reactor' || e.kind === 'port') {
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery' || e.kind === 'fuelgen' || e.kind === 'reactor' || e.kind === 'port' || e.kind === 'launcher') {
           const st = e.status;
           const col = st === 'discharge' ? '#4fd1bd' : st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
           const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' || st === 'nodest' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
@@ -390,7 +390,7 @@ export class Renderer {
         ctx.fillText((e.mode === 'send' ? '▲' : '▼') + PORT_CH[e.ch], px + s - 17, py + s - 12.5);
       }
       if (e.kind === 'port' && e.mode === 'send') continue;
-      if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
+      if (!['launcher', 'hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
         this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
       }
@@ -488,6 +488,26 @@ export class Renderer {
       }
       ctx.drawImage(sp.drone[((now * 30) | 0) % 6], -17, -17, 34, 34);
       ctx.restore();
+    }
+
+    // lanzamiento de la catapulta: cápsula que sube con estela
+    for (const e of game.machines) {
+      if (e.kind !== 'launcher' || !(e.fx > 0)) continue;
+      const k = 1 - e.fx / 5; // 0 → 1
+      const cx = (e.x + 2.5) * TILE, cy = (e.y + 2.5) * TILE;
+      const rise = k * k * 2600;
+      const scale = 1 + k * 1.6;
+      ctx.globalCompositeOperation = 'lighter';
+      const fl = ctx.createRadialGradient(cx, cy, 4, cx, cy, 120 * (1 - k) + 20);
+      fl.addColorStop(0, `rgba(200,255,245,${0.9 * (1 - k)})`); fl.addColorStop(1, 'rgba(79,209,189,0)');
+      ctx.fillStyle = fl; ctx.beginPath(); ctx.arc(cx, cy, 140, 0, 7); ctx.fill();
+      const tr = ctx.createLinearGradient(cx, cy - rise, cx, cy);
+      tr.addColorStop(0, 'rgba(255,240,200,0.9)'); tr.addColorStop(1, 'rgba(79,209,189,0)');
+      ctx.fillStyle = tr;
+      ctx.fillRect(cx - 6 * scale, cy - rise, 12 * scale, rise);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(sp.items.modulo, cx - 16 * scale, cy - rise - 20 * scale, 32 * scale, 40 * scale);
+      if (Math.random() < 0.6) this.puff(cx + (Math.random() - 0.5) * 40, cy + (Math.random() - 0.5) * 40, 'smoke');
     }
 
     // noche: oscurecer y encender luces
@@ -620,6 +640,7 @@ export class Renderer {
       case 'fuelgen': return sp.fuelgen[e.status === 'work' ? ((t * 10) | 0) % 2 : 0];
       case 'chest': return sp.chest;
       case 'port': return sp.port;
+      case 'launcher': return sp.launcher[e.status === 'work' ? Math.min(5, Math.round(e.charge * 5 + (Math.sin(t * 8) > 0 ? 0.4 : 0))) : e.mods > 0 ? 1 : 0];
       case 'splitter': return sp.splitter[e.dir];
       case 'pole': return sp.pole;
       case 'pump': return sp.pump[e.status === 'idle' ? 0 : ((t * 12) | 0) % 8];
@@ -644,7 +665,7 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = g.ok ? 'rgba(80,220,150,0.25)' : 'rgba(240,70,60,0.35)';
     ctx.fillRect(g.x * TILE, g.y * TILE, s, s);
-    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor', 'port'].includes(def.kind)) {
+    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor', 'port', 'launcher'].includes(def.kind)) {
       const m = (def.size - 1) >> 1, sz = def.size;
       const out = [[g.x + sz, g.y + m], [g.x + sz - 1 - m, g.y + sz], [g.x - 1, g.y + sz - 1 - m], [g.x + m, g.y - 1]][g.dir];
       this.arrow(out[0], out[1], g.dir, 'rgba(255,190,80,0.95)');
