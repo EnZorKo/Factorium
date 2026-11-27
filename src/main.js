@@ -1,7 +1,7 @@
 // Arranque, bucle principal y la interfaz (HUD, dron, objetivos y paneles).
 import { BUILDINGS, ITEMS, ITEM_IDS, MILESTONES, RECIPES, RESOURCES, TASKS, TILE, UPS, REVEAL_R, MINE_RANGE, ROADMAP, FUEL } from './config.js';
 import { Game, setItemNamer } from './sim.js';
-import { Renderer } from './render.js';
+import { Renderer, PORT_CH, PORT_COLORS } from './render.js';
 import { Input } from './input.js';
 import { buildSprites, toolIcon } from './sprites.js';
 import { saveLocal, loadLocal, clearLocal, exportFile, readFile } from './save.js';
@@ -17,6 +17,7 @@ const STATUS_TEXT = {
   nopower: ['st-power', 'Sin energía: ponle un poste cerca conectado a la red'],
   nowater: ['st-full', 'Sin agua: conéctala con tuberías a una bomba'],
   nofuel: ['st-idle', 'Sin combustible: llévale carbón o coque'],
+  nodest: ['st-full', 'Sin destino: pon otro puerto del mismo canal en modo Recibir (y con sitio)'],
 };
 setItemNamer((k) => ITEMS[k].name);
 
@@ -338,10 +339,22 @@ class App {
         h += `<div class="status">${e.total}/${d.capacity}</div><div class="slots">${list.map(([k, v]) => this.slot(k, v)).join('') || 'vacía'}</div>`;
         break;
       }
+      case 'port': {
+        const list = Object.entries(e.store).filter(([, v]) => v > 0);
+        h += `<div class="row">${['send', 'recv'].map((m) => `<button class="btn ${e.mode === m ? 'active' : ''}" data-mode="${m}">${m === 'send' ? '▲ Enviar' : '▼ Recibir'}</button>`).join('')}</div>`;
+        h += `<div class="row">Canal ${PORT_CH.map((c, i) => `<button class="btn ${e.ch === i ? 'active' : ''}" data-ch="${i}" style="color:${PORT_COLORS[i]}">${c}</button>`).join('')}</div>`;
+        h += `<div class="status">${e.total}/${d.capacity}</div><div class="slots">${list.map(([k, v]) => this.slot(k, v)).join('') || 'vacío'}</div>`;
+        let peers = 0;
+        for (const p of this.game.machines) if (p.kind === 'port' && p !== e && p.ch === e.ch && p.mode !== e.mode) peers++;
+        h += `<div class="help">${e.mode === 'send'
+          ? `Mete cosas por cinta. El dron lleva hasta ${d.load} por viaje al puerto en Recibir más cercano del canal ${PORT_CH[e.ch]} (${peers} disponibles).${e.fly ? ` En vuelo: ${e.fly.back ? 'volviendo' : `${e.fly.n} ${ITEMS[e.fly.item].name}`}.` : ''}`
+          : `Saca por la flecha lo que traen los drones del canal ${PORT_CH[e.ch]} (${peers} puertos envían aquí). Apúntalo a la Baliza o a una cinta.`}</div>`;
+        break;
+      }
       case 'belt': h += `<div class="help">${(d.speed * 60).toFixed(0)} objetos por minuto. Las cintas pueden recibir por los lados.</div>`; break;
       case 'splitter': h += `<div class="help">Lo que entra por detrás sale por delante, izquierda y derecha, por turnos.</div>`; break;
     }
-    const canCollect = (e.kind === 'chest' && e.total) || (e.kind === 'furnace' && e.outCount) || (e.kind === 'crafter' && e.outCount);
+    const canCollect = ((e.kind === 'chest' || e.kind === 'port') && e.total) || (e.kind === 'furnace' && e.outCount) || (e.kind === 'crafter' && e.outCount);
     h += `<div class="row">${canCollect ? '<button class="btn primary" data-act="collect">Recoger</button>' : ''}
       <button class="btn" data-act="rotate">⟳ Girar</button><button class="btn" data-act="move">✥ Mover</button><button class="btn" data-act="delete">✖ Quitar</button></div>`;
     const body = $('sheetBody');
@@ -351,11 +364,13 @@ class App {
     body.onclick = (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
+      if (b.dataset.mode) e.mode = b.dataset.mode;
+      if (b.dataset.ch) e.ch = +b.dataset.ch;
       if (b.dataset.recipe) { this.game.setRecipe(e, b.dataset.recipe); this.invDirty = true; }
       const act = b.dataset.act;
       if (act === 'collect') {
         const before = { ...this.game.inv };
-        if (e.kind === 'chest') { for (const k in e.store) this.game.inv[k] += e.store[k]; e.store = {}; e.total = 0; }
+        if (e.kind === 'chest' || e.kind === 'port') { for (const k in e.store) this.game.inv[k] += e.store[k]; e.store = {}; e.total = 0; }
         else if (e.kind === 'furnace') { this.game.inv[e.outType] += e.outCount; e.outCount = 0; }
         else if (e.kind === 'crafter') { this.game.inv[RECIPES[e.recipe].out] += e.outCount; e.outCount = 0; }
         const got = ITEM_IDS.reduce((a, k) => a + this.game.inv[k] - before[k], 0);
@@ -465,6 +480,7 @@ class App {
     $('btnCancel').onclick = () => { this.moving = null; this.selectTool(null); };
     $('btnMilestones').onclick = () => this.openMilestones();
     $('btnMenu').onclick = () => this.openMenu();
+    $('btnStats').onclick = () => this.openStats();
     $('btnCenter').onclick = () => { this.freeCam = false; };
     $('panelClose').onclick = () => this.closePanel();
     $('sheetClose').onclick = () => this.closeSheet();
@@ -591,7 +607,7 @@ class App {
     $('panel').classList.remove('hidden');
   }
 
-  closePanel() { $('panel').classList.add('hidden'); this.panelKind = null; }
+  closePanel() { $('panel').classList.add('hidden'); this.panelKind = null; $('panelBody').onclick = null; }
 
   openWelcome() {
     const touch = matchMedia('(pointer: coarse)').matches;
@@ -636,6 +652,51 @@ class App {
     if (btn) btn.onclick = () => { if (g.completeMilestone()) { saveLocal(g); this.openMilestones(); } };
   }
 
+  // ---------- Estadísticas ----------
+  openStats(span) {
+    if (span) this.statSpan = span;
+    const buckets = this.statSpan || 6;
+    const g = this.game;
+    const r = g.rates(buckets);
+    const fmt = (v) => (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, '') || '0');
+    let rows = '';
+    let maxV = 1;
+    ITEM_IDS.forEach((id, i) => { maxV = Math.max(maxV, r.p[i], r.c[i]); });
+    ITEM_IDS.forEach((id, i) => {
+      const p = r.p[i], c = r.c[i];
+      if (p < 0.01 && c < 0.01) return;
+      const net = p - c;
+      rows += `<div class="srow"><img src="${this.itemImg[id]}" alt=""><span class="sname">${ITEMS[id].name}</span>
+        <span class="sbars"><i class="sp" style="width:${(p / maxV) * 100}%"></i><i class="sc" style="width:${(c / maxV) * 100}%"></i></span>
+        <span class="good">+${fmt(p)}</span><span class="bad">−${fmt(c)}</span><b class="${net < -0.01 ? 'bad' : ''}">${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))}</b></div>`;
+    });
+    const hist = g.hist.slice(-60);
+    const maxKw = Math.max(1, ...hist.map((h) => Math.max(h.kw, h.cap)));
+    const bars = hist.map((h, i) => {
+      const x = (i / Math.max(1, hist.length)) * 300, w = 300 / Math.max(1, hist.length) - 1;
+      return `<rect x="${x}" y="${60 - (h.cap / maxKw) * 58}" width="${w}" height="${(h.cap / maxKw) * 58}" fill="rgba(90,160,255,0.25)"/><rect x="${x}" y="${60 - (h.kw / maxKw) * 58}" width="${w}" height="${(h.kw / maxKw) * 58}" fill="${h.kw > h.cap + 1 ? '#ff5a4a' : '#f2c14a'}"/>`;
+    }).join('');
+    const last = hist[hist.length - 1];
+    const body = `<h2>Estadísticas</h2>
+      <div class="row">${[[6, 'Último minuto'], [60, 'Últimos 10 min']].map(([b, t]) => `<button class="btn ${buckets === b ? 'active' : ''}" data-span="${b}">${t}</button>`).join('')}</div>
+      <b>Energía</b>
+      <div class="help">${last ? `Consumo <b>${last.kw.toFixed(0)} kW</b> de <b>${last.cap.toFixed(0)} kW</b> disponibles` : 'Aún no hay datos'}</div>
+      <svg class="spark" viewBox="0 0 300 60" preserveAspectRatio="none">${bars}</svg>
+      <b>Objetos por minuto</b> <span class="help">(producido · consumido · balance)</span>
+      <div class="stats">${rows || '<p class="help">Aún no hay producción. Los datos se recogen cada 10 segundos.</p>'}</div>
+      <p class="help">Un balance en rojo significa que gastas más de lo que fabricas: añade más máquinas antes en la cadena.</p>`;
+    const box = document.querySelector('.panel-box');
+    const scroll = this.panelKind === 'stats' ? box.scrollTop : 0;
+    this.showPanel('stats', body);
+    box.scrollTop = scroll;
+    $('panelBody').onclick = (ev) => {
+      const b = ev.target.closest('[data-span]');
+      if (b) this.openStats(+b.dataset.span);
+    };
+    clearTimeout(this.statTimer);
+    this.statTimer = setTimeout(() => { if (this.panelKind === 'stats') this.openStats(); }, 2000);
+  }
+
   openMenu() {
     this.showPanel('menu', `<h2>Factorium</h2>
       <p>Fase 1 · la partida se guarda sola cada 30 segundos y al cerrar.</p>
@@ -648,7 +709,7 @@ class App {
       </div>
       <h2 style="margin-top:16px">Controles</h2>
       <div class="help">
-        <p><b>PC:</b> WASD mueve el dron (Mayús = rápido) · arrastrar mira el mapa · C vuelve al dron · rueda zoom · 1–9 edificios · clic coloca · arrastra para trazar cintas · <b>R</b> girar · clic derecho o <b>X</b> quitar · <b>Q</b>/Esc soltar · <b>H</b> hitos · F3 rendimiento.</p>
+        <p><b>PC:</b> WASD mueve el dron (Mayús = rápido) · arrastrar mira el mapa · C vuelve al dron · rueda zoom · 1–9 edificios · clic coloca · arrastra para trazar cintas · <b>R</b> girar · clic derecho o <b>X</b> quitar · <b>Q</b>/Esc soltar · <b>H</b> hitos · <b>E</b> estadísticas · F3 rendimiento.</p>
         <p><b>Móvil y tablet:</b> joystick mueve el dron · un dedo mira el mapa · dos dedos zoom · elige edificio y toca para colocar · arrastra para trazar cintas · ⟳ girar, ✖ quitar, ✋ soltar.</p>
       </div>`);
     $('mHelp').onclick = () => this.openWelcome();

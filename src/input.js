@@ -204,6 +204,7 @@ export class Input {
     else if (k === 'x') this.app.toggleErase();
     else if (k === 'f3') { e.preventDefault(); this.app.toggleDebug(); }
     else if (k === 'h') this.app.openMilestones();
+    else if (k === 'e') this.app.openStats();
     else if (k === 'c') this.app.freeCam = false;
     else if (k === '+' || k === '=') this.r.zoomAt(this.r.vw / 2, this.r.vh / 2, 1.2);
     else if (k === '-') this.r.zoomAt(this.r.vw / 2, this.r.vh / 2, 1 / 1.2);

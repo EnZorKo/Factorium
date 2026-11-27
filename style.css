@@ -141,3 +141,17 @@ canvas#game { position: fixed; inset: 0; touch-action: none; display: block; }
 .st-power { color: #5aa0ff; }
 .help.bad, .bad { color: var(--bad); }
 .clock { align-self: center; background: var(--panel); border: 1px solid var(--panel-edge); border-radius: 4px; padding: 6px 8px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Estadísticas */
+.spark { width: 100%; height: 60px; background: rgba(0,0,0,0.25); border-radius: 6px; margin: 6px 0 12px; display: block; }
+.stats { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+.srow { display: grid; grid-template-columns: 22px minmax(70px, 1.3fr) 1fr 52px 52px 56px; gap: 6px; align-items: center; font-size: 13px; }
+.srow img { width: 20px; height: 20px; }
+.srow .sname { text-align: left !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow span, .srow b { text-align: right; font-variant-numeric: tabular-nums; }
+.srow .sbars { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+.srow .sbars i { display: block; height: 4px; border-radius: 2px; min-width: 1px; }
+.srow .sbars .sp { background: #5fe08a; }
+.srow .sbars .sc { background: #ff7a5a; }
+.good { color: #5fe08a; }
+@media (max-width: 700px) { .srow { grid-template-columns: 20px 1fr 46px 46px 50px; } .srow .sbars { display: none; } }

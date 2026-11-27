@@ -114,6 +114,8 @@ export const BUILDINGS = {
                   desc: 'Enriquece el mineral de uranio: 10 → 1 Uranio enriquecido.' },
   reactor:      { name: 'Reactor nuclear', kind: 'reactor', size: 4, output: 10000, fuels: ['celda'], cost: { acero: 200, circuito: 100, bastidor: 40, traccion: 10 }, key: 'n',
                   desc: 'Da 10 MW quemando celdas nucleares. Necesita mucha agua: conéctalo con tuberías a bombas (cuenta como 3 calderas).' },
+  puerto:       { name: 'Puerto de drones', kind: 'port', size: 2, capacity: 400, load: 50, speed: 12, power: 120, cost: { acero: 30, circuito: 10, actuador: 6 }, key: 'y',
+                  desc: 'Un dron de carga lleva lo que le entra por cinta a otro puerto del mismo canal en modo Recibir, esté donde esté. Gasta energía mientras vuela.' },
   baliza:       { name: 'Baliza de aterrizaje', kind: 'hub', size: 3, supply: 6, wire: 9, output: 180, cost: {}, hidden: true,
                   desc: 'Tu base. Todo lo que entra va a tu inventario. Da 180 kW de energía de emergencia a su alrededor.' },
 };
@@ -146,15 +148,16 @@ export const MILESTONES = [
   { id: 'petroleo', name: 'Petróleo', cost: { acero: 300, actuador: 60, bastidor: 60 },
     unlocks: ['pozo', 'refineria', 'genComb'],
     text: 'Pozos sobre los charcos negros, refinería para Combustible y Plástico, y generadores de combustible de 1,5 MW. La Ensambladora ya hace Circuitos con plástico.' },
+  { id: 'logistica', name: 'Logística a distancia', cost: { circuito: 150, acero: 200, actuador: 100 },
+    unlocks: ['puerto'],
+    text: 'Puertos de drones: lo que entra en un puerto en modo Enviar vuela solo a otro puerto del mismo canal en modo Recibir. Ideal para traer uranio o petróleo de lejos.' },
   { id: 'nuclear', name: 'Nuclear', cost: { circuito: 300, acero: 500, traccion: 40 },
     unlocks: ['centrifugadora', 'reactor'],
     text: 'Mina el uranio (verde), enriquécelo en la Centrifugadora, haz Celdas en la Ensambladora y quémalas en un Reactor de 10 MW refrigerado con agua.' },
-  { id: 'logistica', name: 'Logística a distancia', cost: null, unlocks: [],
-    text: 'Drones de carga entre bases lejanas. Llegará en la próxima versión.' },
 ];
 
 // Hoja de ruta de energía (se muestra en Hitos).
-export const ROADMAP = ['Logística a distancia: drones de carga', 'Proyecto final'];
+export const ROADMAP = ['Proyecto final'];
 
 // Objetivos: entregas en la Baliza, en orden. Cómo conseguirlo lo decide quien juega.
 export const TASKS = [

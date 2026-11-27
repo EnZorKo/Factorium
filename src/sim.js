@@ -28,6 +28,10 @@ export class Game {
     this.task = 0;
     this.depleted = new Set(); // casillas cuya cantidad cambió (para guardar)
     this.listeners = new Set();
+    // estadísticas: lo producido/consumido en el tramo actual de 10 s y el historial
+    this.prod = new Float64Array(ITEM_IDS.length);
+    this.cons = new Float64Array(ITEM_IDS.length);
+    this.hist = [];
     this.nets = [];
     this.wires = [];
     this.powerDirty = true;
@@ -152,7 +156,12 @@ export class Game {
   emptyInto(e) {
     const inv = this.inv;
     if (e.kind === 'belt') { for (const t of e.it) inv[ITEM_IDS[t]]++; e.it.length = 0; e.ip.length = 0; }
-    if (e.kind === 'chest') { for (const k in e.store) inv[k] += e.store[k]; e.store = {}; e.total = 0; }
+    if (e.kind === 'chest' || e.kind === 'port') { for (const k in e.store) inv[k] += e.store[k]; e.store = {}; e.total = 0; }
+    if (e.kind === 'port' && e.fly && !e.fly.back) {
+      inv[e.fly.item] += e.fly.n;
+      e.fly.dst.reserved = Math.max(0, e.fly.dst.reserved - e.fly.n);
+      e.fly = null;
+    }
     if (e.kind === 'furnace') {
       if (e.inType) inv[e.inType] += e.inCount;
       if (e.outType) inv[e.outType] += e.outCount;
@@ -195,6 +204,7 @@ export class Game {
     if (w.amount[k] === 0) return null;
     const item = RESOURCES[w.resource[k]].item;
     w.amount[k]--;
+    this.prod[ITEM_NUM[item]]++;
     this.depleted.add(k);
     if (w.amount[k] === 0) {
       w.resource[k] = 0;
@@ -246,6 +256,29 @@ export class Game {
       case 2: return [e.x - 1, e.y + s - 1 - m];
       default: return [e.x + m, e.y - 1];
     }
+  }
+
+  // Ritmo por minuto de cada objeto en los últimos `buckets` tramos de 10 s.
+  rates(buckets = 6) {
+    const h = this.hist.slice(-buckets);
+    const n = ITEM_IDS.length;
+    const p = new Float64Array(n), c = new Float64Array(n);
+    for (const b of h) for (let i = 0; i < n; i++) { p[i] += b.p[i]; c[i] += b.c[i]; }
+    const mins = Math.max(1, h.length) / 6;
+    for (let i = 0; i < n; i++) { p[i] /= mins; c[i] /= mins; }
+    return { p, c, span: h.length * 10 };
+  }
+
+  // Puerto de destino más cercano: mismo canal, modo Recibir y con sitio.
+  pickPort(e) {
+    let best = null, bd = Infinity;
+    for (const p of this.machines) {
+      if (p.kind !== 'port' || p === e || p.mode !== 'recv' || p.ch !== e.ch) continue;
+      if (p.def.capacity - p.total - p.reserved <= 0) continue;
+      const d = Math.hypot(p.x - e.x, p.y - e.y);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
   }
 
   rebuildOrder() {
@@ -440,7 +473,7 @@ export class Game {
       for (const gen of net.gens) {
         const kw = gen.avail * load;
         gen.status = kw > 0 ? 'work' : 'idle';
-        if (kw > 0) genDraw(gen, kw);
+        if (kw > 0) genDraw(this, gen, kw);
       }
     }
   }
@@ -479,6 +512,12 @@ export class Game {
     const ms = this.machines;
     for (let k = 0; k < ms.length; k++) updateMachine(this, ms[k]);
     this.tick++;
+    if (this.tick % (UPS * 10) === 0) {
+      this.hist.push({ p: this.prod, c: this.cons, kw: this.nets.reduce((a, n) => a + (n.lastDemand || 0), 0), cap: this.nets.reduce((a, n) => a + (n.cap || 0), 0) });
+      if (this.hist.length > 60) this.hist.shift();
+      this.prod = new Float64Array(ITEM_IDS.length);
+      this.cons = new Float64Array(ITEM_IDS.length);
+    }
   }
 
   // ---------- Guardado ----------
@@ -490,6 +529,7 @@ export class Game {
       const rec = [e.type, e.x, e.y, e.dir];
       if (e.kind === 'belt') rec.push(e.it.map((t, i) => [t, +e.ip[i].toFixed(3)]));
       else if (e.kind === 'chest') rec.push(e.store);
+      else if (e.kind === 'port') rec.push([e.mode, e.ch, e.store, e.fly && !e.fly.back ? [e.fly.item, e.fly.n] : null]);
       else if (e.kind === 'furnace') rec.push([e.inType, e.inCount, e.outType, e.outCount, e.progress]);
       else if (e.kind === 'crafter') rec.push([e.recipe, e.inb, e.outCount, e.progress]);
       else if (e.kind === 'boiler' || e.kind === 'fuelgen' || e.kind === 'reactor') rec.push([e.fuelType, e.fuel, e.energy]);
@@ -527,6 +567,11 @@ export class Game {
       if (!e || extra == null) continue;
       if (e.kind === 'belt') for (const [t, p] of extra) { e.it.push(t); e.ip.push(p); }
       else if (e.kind === 'chest') { e.store = extra; e.total = Object.values(extra).reduce((a, b) => a + b, 0); }
+      else if (e.kind === 'port') {
+        [e.mode, e.ch, e.store] = extra;
+        if (extra[3]) e.store[extra[3][0]] = (e.store[extra[3][0]] || 0) + extra[3][1];
+        e.total = Object.values(e.store).reduce((a, b) => a + b, 0);
+      }
       else if (e.kind === 'furnace') [e.inType, e.inCount, e.outType, e.outCount, e.progress] = extra;
       else if (e.kind === 'crafter') { g.setRecipe(e, extra[0]); Object.assign(e.inb, extra[1]); e.outCount = extra[2]; e.progress = extra[3]; }
       else if (e.kind === 'boiler' || e.kind === 'fuelgen' || e.kind === 'reactor') [e.fuelType, e.fuel, e.energy] = extra;
@@ -589,6 +634,7 @@ function initEntity(e, g) {
       g.setRecipe(e, e.def.defaultRecipe);
       break;
     case 'chest': e.store = {}; e.total = 0; break;
+    case 'port': e.store = {}; e.total = 0; e.mode = 'send'; e.ch = 0; e.fly = null; e.wait = 0; e.reserved = 0; break;
     case 'splitter': e.buf = null; e.rr = 0; break;
     case 'boiler': e.fuelType = null; e.fuel = 0; e.energy = 0; e.water = 0; e.gens = []; e.burning = 0; break;
     case 'generator': e.boiler = null; e.avail = 0; break;
@@ -648,6 +694,11 @@ function accept(g, e, item, travel) {
       e.store[item] = (e.store[item] || 0) + 1; e.total++;
       return true;
     }
+    case 'port': {
+      if (e.mode !== 'send' || e.total >= e.def.capacity) return false;
+      e.store[item] = (e.store[item] || 0) + 1; e.total++;
+      return true;
+    }
     case 'splitter': {
       if (travel !== e.dir || e.buf) return false;
       e.buf = item;
@@ -674,12 +725,12 @@ function genAvail(gen) {
 }
 
 // Gasta combustible por entregar kw durante un tick.
-function genDraw(gen, kw) {
+function genDraw(g, gen, kw) {
   const b = gen.kind === 'generator' ? gen.boiler : gen;
   if (!b) return;
   b.energy -= kw / UPS;
   b.burning = 30;
-  while (b.energy <= 0 && b.fuel > 0) { b.fuel--; b.energy += FUEL[b.fuelType]; }
+  while (b.energy <= 0 && b.fuel > 0) { b.fuel--; b.energy += FUEL[b.fuelType]; g.cons[ITEM_NUM[b.fuelType]]++; }
   if (b.energy < 0) b.energy = 0;
 }
 
@@ -738,6 +789,8 @@ function updateMachine(g, e) {
           if (e.progress >= 1) {
             e.progress = 0;
             e.inCount -= r.inCount;
+            g.cons[ITEM_NUM[e.inType]] += r.inCount;
+            g.prod[ITEM_NUM[r.out]]++;
             e.outType = r.out; e.outCount++;
             if (e.inCount === 0) e.inType = null;
           }
@@ -760,10 +813,10 @@ function updateMachine(g, e) {
         if (e.outCount >= OUT_BUF) e.status = 'full';
         else {
           const f = powerFactor(e);
-          if (f > 0 && e.progress === 0) { for (const k in r.in) e.inb[k] -= r.in[k]; e.progress = 1e-9; }
+          if (f > 0 && e.progress === 0) { for (const k in r.in) { e.inb[k] -= r.in[k]; g.cons[ITEM_NUM[k]] += r.in[k]; } e.progress = 1e-9; }
           e.status = f > 0 ? 'work' : 'nopower';
           if (e.progress > 0) e.progress += f / (r.time * UPS);
-          if (e.progress >= 1) { e.progress = 0; e.outCount += r.n; }
+          if (e.progress >= 1) { e.progress = 0; e.outCount += r.n; g.prod[ITEM_NUM[r.out]] += r.n; }
         }
       }
       if (e.outCount > 0) {
@@ -773,6 +826,7 @@ function updateMachine(g, e) {
       }
       break;
     }
+    case 'port': updatePort(g, e); break;
     case 'splitter': {
       if (!e.buf) break;
       const dirs = [e.dir, (e.dir + 3) % 4, (e.dir + 1) % 4];
@@ -783,4 +837,57 @@ function updateMachine(g, e) {
       break;
     }
   }
+}
+
+function updatePort(g, e) {
+  if (e.fly) { portFly(g, e); return; }
+  if (e.mode === 'recv') {
+    e.status = e.total ? 'work' : 'idle';
+    if (!e.total) return;
+    let k = null;
+    for (const key in e.store) if (e.store[key] > 0) { k = key; break; }
+    const [tx, ty] = g.outputTile(e);
+    if (g.pushTo(tx, ty, k, e.dir)) {
+      if (--e.store[k] === 0) delete e.store[k];
+      e.total--;
+    } else e.status = 'full';
+    return;
+  }
+  {
+    e.status = 'idle';
+    if (!e.total) { e.wait = 0; return; }
+    e.wait++;
+    if (e.total < e.def.load && e.wait < 3 * UPS) return;
+    const dst = g.pickPort(e);
+    if (!dst) { e.status = 'nodest'; return; }
+    let item = null;
+    for (const key in e.store) if (!item || e.store[key] > e.store[item]) item = key;
+    const n = Math.min(e.def.load, e.store[item], dst.def.capacity - dst.total - dst.reserved);
+    if ((e.store[item] -= n) === 0) delete e.store[item];
+    e.total -= n;
+    dst.reserved += n;
+    const sx = e.x + e.size / 2, sy = e.y + e.size / 2, dx = dst.x + dst.size / 2, dy = dst.y + dst.size / 2;
+    e.fly = { dst, item, n, t: 0, len: Math.max(1, Math.hypot(dx - sx, dy - sy)), back: false, sx, sy, dx, dy };
+    e.wait = 0;
+  }
+}
+
+function portFly(g, e) {
+  const f = e.fly;
+  const pf = powerFactor(e);
+  e.status = pf > 0 ? 'work' : 'nopower';
+  f.t += (e.def.speed * pf) / UPS;
+  if (f.t < f.len) return;
+  if (!f.back) {
+    const dst = f.dst;
+    if (g.ents[dst.id] === dst) {
+      dst.store[f.item] = (dst.store[f.item] || 0) + f.n;
+      dst.total += f.n;
+      dst.reserved = Math.max(0, dst.reserved - f.n);
+    } else {
+      e.store[f.item] = (e.store[f.item] || 0) + f.n;
+      e.total += f.n;
+    }
+    f.n = 0; f.back = true; f.t = 0;
+  } else e.fly = null;
 }

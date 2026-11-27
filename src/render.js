@@ -9,6 +9,9 @@ import { DX, DY } from './sim.js';
 const CH = 32;   // casillas por bloque de terreno
 const TP = 16;   // píxeles por casilla en la caché de terreno
 
+export const PORT_CH = ['A', 'B', 'C', 'D', 'E', 'F'];
+export const PORT_COLORS = ['#4fd1bd', '#f2c14a', '#ff7a5a', '#b48cff', '#7ad04a', '#5aa0ff'];
+
 export class Renderer {
   constructor(canvas, game, sprites) {
     this.canvas = canvas;
@@ -359,10 +362,10 @@ export class Renderer {
           ctx.drawImage(sp.items[icon], px + s - 21, py + 3, 18, 18);
         }
         // luz de estado
-        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery' || e.kind === 'fuelgen' || e.kind === 'reactor') {
+        if (e.kind === 'miner' || e.kind === 'furnace' || e.kind === 'crafter' || e.kind === 'boiler' || e.kind === 'generator' || e.kind === 'battery' || e.kind === 'fuelgen' || e.kind === 'reactor' || e.kind === 'port') {
           const st = e.status;
           const col = st === 'discharge' ? '#4fd1bd' : st === 'work' ? '#5fe08a' : (st === 'full' || st === 'nowater') ? '#ff5a4a' : st === 'empty' ? '#8a8f95' : st === 'nopower' ? '#5aa0ff' : '#f2c14a';
-          const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
+          const blink = st === 'full' || st === 'empty' || st === 'nopower' || st === 'nowater' || st === 'nofuel' || st === 'nodest' ? (Math.sin(now * 6) > 0 ? 1 : 0.35) : 1;
           if (st === 'nopower') {
             ctx.globalAlpha = blink;
             ctx.fillStyle = 'rgba(15,17,19,0.8)';
@@ -379,6 +382,14 @@ export class Renderer {
           ctx.globalAlpha = 1;
         }
       }
+      if (e.kind === 'port' && detail) {
+        ctx.fillStyle = 'rgba(15,17,19,0.8)';
+        ctx.beginPath(); ctx.roundRect(px + s - 30, py + s - 22, 26, 18, 5); ctx.fill();
+        ctx.fillStyle = PORT_COLORS[e.ch];
+        ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText((e.mode === 'send' ? '▲' : '▼') + PORT_CH[e.ch], px + s - 17, py + s - 12.5);
+      }
+      if (e.kind === 'port' && e.mode === 'send') continue;
       if (!['hub', 'chest', 'splitter', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor'].includes(e.kind) && (state.tool || cam.z >= 0.9)) {
         const [tx, ty] = game.outputTile(e);
         this.arrow(tx, ty, e.dir, state.tool ? 'rgba(255,170,60,0.85)' : 'rgba(255,170,60,0.45)');
@@ -396,6 +407,19 @@ export class Renderer {
       ctx.beginPath(); ctx.moveTo(ax + 4, ay + 6); ctx.quadraticCurveTo((ax + bx) / 2 + 4, (ay + by) / 2 + 14, bx + 4, by + 6); ctx.stroke();
       ctx.strokeStyle = '#b8743a';
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + bx) / 2, (ay + by) / 2 + 8, bx, by); ctx.stroke();
+    }
+
+    // rutas del puerto seleccionado
+    const selP = state.selected;
+    if (selP && selP.kind === 'port') {
+      ctx.setLineDash([10, 8]);
+      ctx.lineWidth = 2 / cam.z;
+      ctx.strokeStyle = PORT_COLORS[selP.ch];
+      for (const p of game.machines) {
+        if (p.kind !== 'port' || p === selP || p.ch !== selP.ch || p.mode === selP.mode) continue;
+        ctx.beginPath(); ctx.moveTo((selP.x + 1) * TILE, (selP.y + 1) * TILE); ctx.lineTo((p.x + 1) * TILE, (p.y + 1) * TILE); ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
 
     // partículas
@@ -440,6 +464,30 @@ export class Renderer {
         ctx.beginPath(); ctx.arc(dxp, dyp, MINE_RANGE * TILE, 0, 7); ctx.stroke();
         ctx.setLineDash([]);
       }
+    }
+
+    // drones de carga en vuelo
+    for (const e of game.machines) {
+      const f = e.fly;
+      if (!f) continue;
+      const k = Math.min(1, f.t / f.len);
+      const ease = k < 0.5 ? 2 * k * k : 1 - 2 * (1 - k) * (1 - k);
+      const a = f.back ? 1 - ease : ease;
+      const fx = (f.sx + (f.dx - f.sx) * a) * TILE, fy = (f.sy + (f.dy - f.sy) * a) * TILE;
+      const lift = Math.sin(k * Math.PI);
+      const hgt = 6 + Math.min(1, lift * 4) * 22;
+      if (fx < (x0 - 2) * TILE || fx > (x1 + 2) * TILE || fy < (y0 - 2) * TILE || fy > (y1 + 3) * TILE) continue;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.ellipse(fx + hgt * 0.5, fy + hgt * 0.7, 13, 9, 0, 0, 7); ctx.fill();
+      ctx.save();
+      ctx.translate(fx, fy - hgt);
+      ctx.rotate(Math.atan2(f.dy - f.sy, f.dx - f.sx) + (f.back ? Math.PI : 0));
+      if (f.n > 0) {
+        ctx.fillStyle = '#2b2e31'; ctx.fillRect(-9, -9, 18, 18);
+        ctx.drawImage(sp.items[f.item], -8, -8, 16, 16);
+      }
+      ctx.drawImage(sp.drone[((now * 30) | 0) % 6], -17, -17, 34, 34);
+      ctx.restore();
     }
 
     // noche: oscurecer y encender luces
@@ -571,6 +619,7 @@ export class Renderer {
       case 'reactor': return e.status === 'work' ? sp.reactor.on[((t * 6) | 0) % 6] : sp.reactor.off;
       case 'fuelgen': return sp.fuelgen[e.status === 'work' ? ((t * 10) | 0) % 2 : 0];
       case 'chest': return sp.chest;
+      case 'port': return sp.port;
       case 'splitter': return sp.splitter[e.dir];
       case 'pole': return sp.pole;
       case 'pump': return sp.pump[e.status === 'idle' ? 0 : ((t * 12) | 0) % 8];
@@ -595,7 +644,7 @@ export class Renderer {
     ctx.globalAlpha = 1;
     ctx.fillStyle = g.ok ? 'rgba(80,220,150,0.25)' : 'rgba(240,70,60,0.35)';
     ctx.fillRect(g.x * TILE, g.y * TILE, s, s);
-    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor'].includes(def.kind)) {
+    if (!['belt', 'chest', 'pole', 'pipe', 'pump', 'boiler', 'generator', 'solar', 'battery', 'fuelgen', 'reactor', 'port'].includes(def.kind)) {
       const m = (def.size - 1) >> 1, sz = def.size;
       const out = [[g.x + sz, g.y + m], [g.x + sz - 1 - m, g.y + sz], [g.x - 1, g.y + sz - 1 - m], [g.x + m, g.y - 1]][g.dir];
       this.arrow(out[0], out[1], g.dir, 'rgba(255,190,80,0.95)');

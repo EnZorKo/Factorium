@@ -781,6 +781,28 @@ function reactorSprite(lit, f) {
   return c;
 }
 
+// Puerto de drones: plataforma de aterrizaje con tolva.
+function portSprite() {
+  const W = S * 2;
+  const c = canvas(W, W);
+  const x = c.getContext('2d');
+  metalPlate(x, 3, 3, W - 6, W - 6, '#4a4f55');
+  hazard(x, 8, 8, W - 16, 8);
+  hazard(x, 8, W - 16, W - 16, 8);
+  rivets(x, 3, 3, W - 6, W - 6, 8);
+  x.fillStyle = '#26292c'; x.beginPath(); x.arc(W / 2, W / 2, 40, 0, 7); x.fill();
+  x.strokeStyle = '#d9dde0'; x.lineWidth = 3;
+  x.beginPath(); x.arc(W / 2, W / 2, 34, 0, 7); x.stroke();
+  x.fillStyle = '#d9dde0';
+  x.fillRect(W / 2 - 14, W / 2 - 16, 6, 32); x.fillRect(W / 2 + 8, W / 2 - 16, 6, 32); x.fillRect(W / 2 - 8, W / 2 - 3, 16, 6);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    x.fillStyle = '#4fd1bd'; x.beginPath(); x.arc(W / 2 + Math.cos(a) * 46, W / 2 + Math.sin(a) * 46, 2.6, 0, 7); x.fill();
+  }
+  grime(x, W, W, 151, 0.12);
+  return c;
+}
+
 // ---------- Recursos (superpuestos al terreno) ----------
 function resourceTile(type, variant) {
   const c = canvas(S, S);
@@ -899,6 +921,7 @@ export function buildSprites() {
   sp.hub = Array.from({ length: 12 }, (_, f) => hubSprite(f));
   sp.press = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pressSprite(f), d)));
   sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
+  sp.port = portSprite();
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
   sp.solar = solarSprite();
@@ -942,6 +965,7 @@ export function toolIcon(sp, type) {
     case 'refineria': img = sp.refinery[0][0]; break;
     case 'genComb': img = sp.fuelgen[0]; break;
     case 'acumulador': img = sp.battery[4]; break;
+    case 'puerto': img = sp.port; break;
     default: img = sp.chest;
   }
   x.drawImage(img, 2, 2, 44, 44);
