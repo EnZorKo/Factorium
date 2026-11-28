@@ -30,7 +30,7 @@ export class Renderer {
     this.resize();
   }
 
-  setGame(game) { this.game = game; this.chunks.clear(); this.ground.clear(); this.fogDirty = true; this.miniDirty = true; this.particles = []; this.floaters = []; }
+  setGame(game) { this.game = game; this.fogRect = null; this.miniRect = null; this.chunks.clear(); this.ground.clear(); this.fogDirty = true; this.miniDirty = true; this.particles = []; this.floaters = []; }
 
   resize() {
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -174,24 +174,41 @@ export class Renderer {
     const w = this.game.world;
     const x = k % w.w, y = (k / w.w) | 0;
     this.chunks.delete(((y / CH) | 0) * 1000 + ((x / CH) | 0));
-    this.miniDirty = true;
+    this.markDirty(x, y, x, y, false);
+  }
+
+  // Marca una zona de casillas para redibujar en niebla y minimapa (sin rehacer todo el mapa).
+  markDirty(x0, y0, x1, y1, fog = true) {
+    const w = this.game.world;
+    x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
+    x1 = Math.min(w.w - 1, Math.ceil(x1)); y1 = Math.min(w.h - 1, Math.ceil(y1));
+    const add = (r) => r ? { x0: Math.min(r.x0, x0), y0: Math.min(r.y0, y0), x1: Math.max(r.x1, x1), y1: Math.max(r.y1, y1) } : { x0, y0, x1, y1 };
+    if (fog) this.fogRect = add(this.fogRect);
+    this.miniRect = add(this.miniRect);
   }
 
   // ---------- Niebla ----------
   updateFog() {
     const w = this.game.world;
     const c = this.fogCanvas;
-    if (c.width !== w.w) { c.width = w.w; c.height = w.h; }
     const x = c.getContext('2d');
-    const img = x.createImageData(w.w, w.h);
-    const d = img.data;
-    for (let i = 0; i < w.explored.length; i++) {
-      const o = i * 4;
-      d[o] = 9; d[o + 1] = 11; d[o + 2] = 14;
-      d[o + 3] = w.explored[i] ? 0 : 244;
+    let r = this.fogRect;
+    if (this.fogDirty || !this.fogImg || c.width !== w.w || c.height !== w.h) {
+      if (c.width !== w.w || c.height !== w.h) { c.width = w.w; c.height = w.h; }
+      this.fogImg = x.createImageData(w.w, w.h);
+      const d = this.fogImg.data;
+      for (let i = 0; i < d.length; i += 4) { d[i] = 9; d[i + 1] = 11; d[i + 2] = 14; }
+      r = { x0: 0, y0: 0, x1: w.w - 1, y1: w.h - 1 };
     }
-    x.putImageData(img, 0, 0);
     this.fogDirty = false;
+    this.fogRect = null;
+    if (!r) return;
+    const d = this.fogImg.data;
+    for (let y = r.y0; y <= r.y1; y++) for (let xx = r.x0; xx <= r.x1; xx++) {
+      const i = y * w.w + xx;
+      d[i * 4 + 3] = w.explored[i] ? 0 : 244;
+    }
+    x.putImageData(this.fogImg, 0, 0, r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1);
   }
 
   // ---------- Efectos ----------
@@ -341,6 +358,7 @@ export class Renderer {
       const s = e.size * TILE;
       const px = e.x * TILE, py = e.y * TILE;
       if (e.kind === 'pole') { ctx.drawImage(this.sp.pole, px, py, s, s); continue; }
+      if (e.kind === 'inserter') { this.drawInserter(e, detail); continue; }
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.fillRect(px + 5, py + 7, s - 4, s - 4);
       ctx.drawImage(this.buildingSprite(e, t), px, py, s, s);
@@ -539,7 +557,7 @@ export class Renderer {
     }
 
     // niebla
-    if (this.fogDirty) this.updateFog();
+    if (this.fogDirty || this.fogRect) this.updateFog();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'medium';
     {
@@ -627,6 +645,27 @@ export class Renderer {
     ctx.beginPath(); ctx.arc(px + c - 2, py + c - 2, 3, 0, 7); ctx.fill();
   }
 
+  drawInserter(e, detail) {
+    const { ctx, sp } = this;
+    const px = e.x * TILE, py = e.y * TILE;
+    ctx.drawImage(sp.inserter[e.dir], px, py, TILE, TILE);
+    const p = e.progress;
+    const u = p < 0 ? p + 1 : 1 - p; // 0 = detrás (coger), 1 = delante (dejar)
+    const ang = e.dir * Math.PI / 2 + Math.PI - Math.PI * u;
+    const cx = px + TILE / 2, cy = py + TILE / 2;
+    const hx = cx + Math.cos(ang) * TILE * 0.62, hy = cy + Math.sin(ang) * TILE * 0.62;
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.moveTo(cx + 3, cy + 4); ctx.lineTo(hx + 3, hy + 4); ctx.stroke();
+    ctx.strokeStyle = '#e0a23c'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = '#2b2e31'; ctx.beginPath(); ctx.arc(hx, hy, 3.2, 0, 7); ctx.fill();
+    ctx.fillStyle = '#8c9197'; ctx.beginPath(); ctx.arc(cx, cy, 4, 0, 7); ctx.fill();
+    if (p < 0 && e.held && detail) ctx.drawImage(sp.items[e.held], hx - 7, hy - 7, 14, 14);
+    if (e.status === 'nopower' && detail) {
+      ctx.fillStyle = '#5aa0ff'; ctx.beginPath(); ctx.arc(px + 5, py + TILE - 5, 3, 0, 7); ctx.fill();
+    }
+  }
+
   buildingSprite(e, t) {
     const sp = this.sp;
     const on = e.status === 'work';
@@ -640,6 +679,7 @@ export class Renderer {
       case 'fuelgen': return sp.fuelgen[e.status === 'work' ? ((t * 10) | 0) % 2 : 0];
       case 'chest': return sp.chest;
       case 'port': return sp.port;
+      case 'inserter': return sp.inserter[e.dir];
       case 'launcher': return sp.launcher[e.status === 'work' ? Math.min(5, Math.round(e.charge * 5 + (Math.sin(t * 8) > 0 ? 0.4 : 0))) : e.mods > 0 ? 1 : 0];
       case 'splitter': return sp.splitter[e.dir];
       case 'pole': return sp.pole;
@@ -698,27 +738,45 @@ export class Renderer {
   // ---------- Minimapa ----------
   drawMinimap(mc, state) {
     const w = this.game.world, g = this.game;
-    if (!this.miniBase || this.miniDirty) {
-      if (!this.miniBase) { this.miniBase = document.createElement('canvas'); this.miniBase.width = w.w; this.miniBase.height = w.h; }
+    if (!this.miniBase || this.miniDirty || this.miniRect || this.miniBase.width !== w.w) {
+      let r = this.miniRect;
+      if (!this.miniBase || this.miniBase.width !== w.w || this.miniBase.height !== w.h) {
+        this.miniBase = document.createElement('canvas'); this.miniBase.width = w.w; this.miniBase.height = w.h;
+        this.miniImg = null;
+      }
       const x = this.miniBase.getContext('2d');
-      const img = x.createImageData(w.w, w.h);
-      const d = img.data;
+      if (this.miniDirty || !this.miniImg) {
+        this.miniImg = x.createImageData(w.w, w.h);
+        r = { x0: 0, y0: 0, x1: w.w - 1, y1: w.h - 1 };
+      }
+      const d = this.miniImg.data;
       const cols = { 0: [70, 64, 58], 1: [98, 66, 52], 2: [48, 66, 68], 3: [18, 44, 60] };
       const rc = { 1: [192, 106, 80], 2: [208, 129, 63], 3: [20, 20, 24], 4: [110, 60, 160], 5: [122, 220, 74] };
-      for (let i = 0; i < w.terrain.length; i++) {
+      for (let yy = r.y0; yy <= r.y1; yy++) for (let xx = r.x0; xx <= r.x1; xx++) {
+        const i = yy * w.w + xx;
         const o = i * 4;
-        let c = w.explored[i] ? (w.resource[i] ? rc[w.resource[i]] : cols[w.terrain[i]]) : [12, 14, 17];
+        const c = w.explored[i] ? (w.resource[i] ? rc[w.resource[i]] : cols[w.terrain[i]]) : [12, 14, 17];
         d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
       }
-      x.putImageData(img, 0, 0);
+      x.putImageData(this.miniImg, 0, 0, r.x0, r.y0, r.x1 - r.x0 + 1, r.y1 - r.y0 + 1);
       this.miniDirty = false;
+      this.miniRect = null;
     }
     const x = mc.getContext('2d');
-    if (mc.width !== w.w) { mc.width = w.w; mc.height = w.h; }
+    // en mapas grandes el minimapa enseña una ventana alrededor del dron
+    const V = Math.min(w.w, 160);
+    const dr = g.drone;
+    const ox = Math.max(0, Math.min(w.w - V, Math.round(dr.x - V / 2)));
+    const oy = Math.max(0, Math.min(w.h - V, Math.round(dr.y - V / 2)));
+    this.miniView = { x0: ox, y0: oy, size: V };
+    if (mc.width !== V) { mc.width = V; mc.height = V; }
     x.imageSmoothingEnabled = false;
-    x.drawImage(this.miniBase, 0, 0);
+    x.fillStyle = '#0c0e11'; x.fillRect(0, 0, V, V);
+    x.drawImage(this.miniBase, ox, oy, V, V, 0, 0, V, V);
+    x.save();
+    x.translate(-ox, -oy);
     for (const e of g.ents) {
-      if (!e) continue;
+      if (!e || e.x + e.size < ox || e.y + e.size < oy || e.x > ox + V || e.y > oy + V) continue;
       x.fillStyle = e.kind === 'belt' ? '#9aa0a7' : e.kind === 'hub' ? '#4fd1bd' : '#e08a3c';
       x.fillRect(e.x, e.y, e.size, e.size);
     }
@@ -731,5 +789,6 @@ export class Renderer {
     x.fillStyle = '#fff';
     x.beginPath(); x.arc(d.x, d.y, 2.5, 0, 7); x.fill();
     if (state.guide) { x.strokeStyle = '#4fd1bd'; x.beginPath(); x.arc(state.guide.x, state.guide.y, 4, 0, 7); x.stroke(); }
+    x.restore();
   }
 }

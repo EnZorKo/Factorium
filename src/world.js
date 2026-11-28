@@ -5,16 +5,16 @@ import { fbm, mulberry32 } from './noise.js';
 export const T_SOIL = 0, T_RUST = 1, T_MARSH = 2, T_WATER = 3;
 
 export class World {
-  constructor(seed) {
+  constructor(seed, size = MAP_W) {
     this.seed = seed;
-    this.w = MAP_W;
-    this.h = MAP_H;
-    const n = MAP_W * MAP_H;
+    this.w = size;
+    this.h = size === MAP_W ? MAP_H : size;
+    const n = this.w * this.h;
     this.terrain = new Uint8Array(n);
     this.resource = new Uint8Array(n); // 0 = nada, 1..3 = RESOURCES
     this.amount = new Uint32Array(n);  // unidades que quedan en la casilla
     this.explored = new Uint8Array(n); // 1 = descubierta
-    this.spawn = { x: (MAP_W >> 1) - 1, y: (MAP_H >> 1) - 1 };
+    this.spawn = { x: (this.w >> 1) - 1, y: (this.h >> 1) - 1 };
     this.generate();
   }
 
@@ -53,8 +53,10 @@ export class World {
     this.patch(cx + 2, cy + 14, 3, 3.5, rnd, 0.7);
     // Vetas por el mapa: más grandes y más ricas cuanto más lejos.
     const prefer = { 1: T_RUST, 2: T_MARSH, 3: T_SOIL };
+    // en mapas grandes hay más vetas (misma densidad que el mapa de 192)
+    const k = (w * h) / (192 * 192);
     let placed = 0, tries = 0;
-    while (placed < 50 && tries < 5000) {
+    while (placed < Math.round(50 * k) && tries < 5000 * k) {
       tries++;
       const x = 6 + Math.floor(rnd() * (w - 12));
       const y = 6 + Math.floor(rnd() * (h - 12));
@@ -64,15 +66,15 @@ export class World {
       const t = this.terrain[this.idx(x, y)];
       if (t === T_WATER) continue;
       if (t !== prefer[type] && rnd() < 0.6) continue;
-      this.patch(x, y, type, 3.5 + rnd() * 3 + d / 35, rnd, 1 + d / 30);
+      this.patch(x, y, type, 3.5 + rnd() * 3 + Math.min(d / 35, 4), rnd, 1 + Math.min(d / 30, 8));
       placed++;
     }
     // Petróleo y uranio: lejos de la Baliza, con su propia semilla (no cambia el resto del mapa).
     const rnd2 = mulberry32(seed ^ 0x51ed270b);
-    const extra = [[4, 14, 40], [5, 8, 55]];
+    const extra = [[4, Math.round(14 * k), 40], [5, Math.round(8 * k), 55]];
     for (const [type, count, minD] of extra) {
       let n = 0, tries2 = 0;
-      while (n < count && tries2 < 4000) {
+      while (n < count && tries2 < 4000 * k) {
         tries2++;
         const x = 6 + Math.floor(rnd2() * (w - 12));
         const y = 6 + Math.floor(rnd2() * (h - 12));

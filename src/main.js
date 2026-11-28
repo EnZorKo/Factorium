@@ -147,7 +147,7 @@ class App {
     const tx = d.x | 0, ty = d.y | 0;
     if (tx !== this._rx || ty !== this._ry) {
       this._rx = tx; this._ry = ty;
-      if (w.reveal(d.x, d.y, REVEAL_R)) { this.renderer.fogDirty = true; this.renderer.miniDirty = true; }
+      if (w.reveal(d.x, d.y, REVEAL_R)) this.renderer.markDirty(d.x - REVEAL_R - 1, d.y - REVEAL_R - 1, d.x + REVEAL_R + 1, d.y + REVEAL_R + 1);
     }
     const cam = this.renderer.cam;
     if (!this.freeCam) {
@@ -373,6 +373,7 @@ class App {
         } else h += '<div class="help">¡Has completado los 4 lanzamientos! Veyra ya tiene su enlace orbital. Puedes seguir ampliando la fábrica.</div>';
         break;
       }
+      case 'inserter': h += `<div class="help">Coge de lo que tiene detrás (caja, cinta, horno, máquina) y lo deja en lo que tiene delante, en el sentido de la flecha. Unos ${(d.rate * 60).toFixed(0)} objetos por minuto.</div>`; break;
       case 'belt': h += `<div class="help">${(d.speed * 60).toFixed(0)} objetos por minuto. Las cintas pueden recibir por los lados.</div>`; break;
       case 'splitter': h += `<div class="help">Lo que entra por detrás sale por delante, izquierda y derecha, por turnos.</div>`; break;
     }
@@ -558,9 +559,9 @@ class App {
     const mm = $('minimap');
     const go = (e) => {
       const r = mm.getBoundingClientRect();
-      const w = this.game.world;
-      this.renderer.cam.x = ((e.clientX - r.left) / r.width) * w.w * TILE;
-      this.renderer.cam.y = ((e.clientY - r.top) / r.height) * w.h * TILE;
+      const v = this.renderer.miniView || { x0: 0, y0: 0, size: this.game.world.w };
+      this.renderer.cam.x = (v.x0 + ((e.clientX - r.left) / r.width) * v.size) * TILE;
+      this.renderer.cam.y = (v.y0 + ((e.clientY - r.top) / r.height) * v.size) * TILE;
       this.freeCam = true;
     };
     let down = false;

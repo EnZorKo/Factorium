@@ -2,8 +2,8 @@
 // Todo el contenido es original de Factorium (planeta Veyra).
 
 export const TILE = 32; // píxeles por casilla a zoom 1
-export const MAP_W = 192;
-export const MAP_H = 192;
+export const MAP_W = 512; // partidas nuevas (las antiguas guardan su tamaño)
+export const MAP_H = 512;
 export const UPS = 60; // ticks de simulación por segundo
 export const REVEAL_R = 11; // radio que descubre el dron (casillas)
 export const MINE_RANGE = 6; // distancia máxima para extraer a mano
@@ -93,8 +93,10 @@ export const BUILDINGS = {
                   desc: 'Reparte lo que entra por detrás entre delante, izquierda y derecha.' },
   cinta2:       { name: 'Cinta Mk2',    kind: 'belt',     size: 1, speed: 3.75, cost: { lingFerrico: 2, lingCobalina: 1 }, key: '7', upgradeOf: 'cinta',
                   desc: 'El doble de rápida. Ponla encima de una cinta para mejorarla.' },
-  prensa:       { name: 'Prensa',       kind: 'crafter',  size: 2, power: 75, cost: { lingFerrico: 20, lingCobalina: 10 }, key: '8', defaultRecipe: 'chapa',
-                  desc: 'Convierte lingotes en piezas. Tócala para elegir receta. Necesita energía.' },
+  prensa:       { name: 'Constructor',  kind: 'crafter',  size: 2, power: 75, cost: { lingFerrico: 15, lingCobalina: 5 }, key: '8', defaultRecipe: 'chapa',
+                  desc: 'Máquina de una entrada: convierte lingotes en Placas, Varillas o Cable. Tócalo para elegir qué fabrica. Necesita energía.' },
+  brazo:        { name: 'Brazo cargador', kind: 'inserter', size: 1, rate: 1.2, power: 13, cost: { lingFerrico: 3, lingCobalina: 2 }, key: 'i',
+                  desc: 'Coge objetos de lo que tiene detrás (caja, cinta, máquina) y los deja delante. Sirve para sacar cosas de las cajas.' },
   ensambladora: { name: 'Ensambladora', kind: 'crafter',  size: 3, power: 150, cost: { chapa: 20, eje: 20, hilo: 20 }, key: '9', defaultRecipe: 'engranaje',
                   desc: 'Une varias piezas en una más compleja. Tócala para elegir receta. Necesita energía.' },
   taladro2:     { name: 'Taladro Mk2',  kind: 'miner',    size: 2, rate: 1.0, power: 180, cost: { lingFerrico: 10, lingCobalina: 8, pastilla: 4 }, key: '0', upgradeOf: 'taladro',
@@ -137,7 +139,7 @@ export const BOILER_GENS = 2;
 // Hitos: el primero viene desbloqueado.
 export const MILESTONES = [
   { id: 'aterrizaje', name: 'Aterrizaje', cost: {},
-    unlocks: ['cinta', 'taladro', 'horno', 'caja', 'poste'],
+    unlocks: ['cinta', 'taladro', 'horno', 'caja', 'poste', 'prensa', 'brazo'],
     text: 'La Baliza da algo de energía a su alrededor. Usa postes para llevarla más lejos.' },
   { id: 'vapor', name: 'Energía de vapor', cost: { lingFerrico: 50, lingCobalina: 25 },
     unlocks: ['bomba', 'tuberia', 'caldera', 'generador'],
@@ -146,11 +148,11 @@ export const MILESTONES = [
     unlocks: ['divisor', 'cinta2'],
     text: 'Divisores para repartir y cintas el doble de rápidas.' },
   { id: 'taller', name: 'Taller', cost: { lingFerrico: 200, lingCobalina: 100, pastilla: 30 },
-    unlocks: ['prensa'],
-    text: 'La Prensa convierte lingotes en Placas, Varillas y Cable de cobre.' },
+    unlocks: ['taladro2'],
+    text: 'Taladros Mk2: extraen el doble de rápido. Ponlos encima de los taladros que ya tienes.' },
   { id: 'ensamblaje', name: 'Ensamblaje', cost: { chapa: 100, eje: 100, hilo: 100 },
-    unlocks: ['ensambladora', 'taladro2'],
-    text: 'La Ensambladora une piezas: Engranaje, Bobina, Bastidor, Actuador y Unidad de tracción. Y taladros más rápidos.' },
+    unlocks: ['ensambladora'],
+    text: 'La Ensambladora tiene varias entradas y une piezas: Engranaje, Bobina, Bastidor, Actuador y Unidad de tracción.' },
   { id: 'renovables', name: 'Renovables', cost: { acero: 100, chapa: 200, hilo: 300 },
     unlocks: ['solar', 'acumulador'],
     text: 'Paneles solares (solo de día) y acumuladores para guardar la energía de sobra. El horno ya funde 3 lingotes de hierro en Acero.' },

@@ -10,8 +10,8 @@ const OUT_BUF = 20;
 const ITEM_NUM = Object.fromEntries(ITEM_IDS.map((id, i) => [id, i]));
 
 export class Game {
-  constructor(seed = (Math.random() * 1e9) | 0) {
-    this.world = new World(seed);
+  constructor(seed = (Math.random() * 1e9) | 0, size) {
+    this.world = new World(seed, size);
     const n = this.world.w * this.world.h;
     this.grid = new Int32Array(n).fill(-1);
     this.ents = [];
@@ -543,14 +543,14 @@ export class Game {
     const dep = [];
     for (const k of this.depleted) dep.push(k, w.amount[k]);
     return {
-      v: 2, seed: w.seed, tick: this.tick, inv: this.inv, milestone: this.milestone, task: this.task, launches: this.launches,
+      v: 2, seed: w.seed, size: w.w, tick: this.tick, inv: this.inv, milestone: this.milestone, task: this.task, launches: this.launches,
       stats: this.stats, drone: { x: this.drone.x, y: this.drone.y }, ents, dep, fog: packBits(w.explored),
     };
   }
 
   static load(data) {
     if (!data || data.v !== 2) throw new Error('versión de partida antigua');
-    const g = new Game(data.seed);
+    const g = new Game(data.seed, data.size || 192);
     g.tick = data.tick || 0;
     const w = g.world;
     if (data.fog) unpackBits(data.fog, w.explored);
@@ -651,6 +651,7 @@ function initEntity(e, g) {
     case 'battery': e.charge = 0; e.status = 'idle'; break;
     case 'fuelgen': case 'reactor': e.fuelType = null; e.fuel = 0; e.energy = 0; e.burning = 0; e.water = 0; e.status = 'idle'; break;
     case 'launcher': e.mods = 0; e.charge = 0; e.fx = 0; break;
+    case 'inserter': e.progress = 0; e.held = null; break;
     case 'hub': break;
   }
 }
@@ -843,6 +844,15 @@ function updateMachine(g, e) {
       break;
     }
     case 'port': updatePort(g, e); break;
+    case 'inserter': {
+      const f = powerFactor(e);
+      if (f <= 0) { e.status = 'nopower'; break; }
+      if (e.progress < 1) { e.progress = Math.min(1, e.progress + (e.def.rate * 2 * f) / UPS); e.status = 'work'; break; }
+      // en la posición de coger (progress = 1): intenta pasar un objeto
+      const item = inserterMove(g, e);
+      if (item) { e.held = item; e.progress = -1; e.status = 'work'; } else e.status = 'idle';
+      break;
+    }
     case 'launcher': {
       if (e.fx > 0) e.fx -= 1 / UPS;
       const need = LAUNCHES[g.launches];
@@ -923,4 +933,43 @@ function portFly(g, e) {
     }
     f.n = 0; f.back = true; f.t = 0;
   } else e.fly = null;
+}
+
+// Brazo: coge de la casilla de detrás y deja en la de delante. Devuelve el objeto movido.
+function inserterMove(g, e) {
+  const src = g.entityAt(e.x - DX[e.dir], e.y - DY[e.dir]);
+  const dst = g.entityAt(e.x + DX[e.dir], e.y + DY[e.dir]);
+  if (!src || !dst || src === dst) return null;
+  const d = e.dir;
+  switch (src.kind) {
+    case 'chest': case 'port': {
+      for (const k in src.store) {
+        if (src.store[k] > 0 && accept(g, dst, k, d)) {
+          if (--src.store[k] === 0) delete src.store[k];
+          src.total--;
+          return k;
+        }
+      }
+      return null;
+    }
+    case 'belt': {
+      if (!src.it.length) return null;
+      const k = ITEM_IDS[src.it[0]];
+      if (!accept(g, dst, k, d)) return null;
+      src.it.shift(); src.ip.shift();
+      return k;
+    }
+    case 'furnace':
+      if (src.outCount > 0 && accept(g, dst, src.outType, d)) { src.outCount--; return src.outType; }
+      return null;
+    case 'crafter': {
+      const out = src.recipe && RECIPES[src.recipe].out;
+      if (src.outCount > 0 && accept(g, dst, out, d)) { src.outCount--; return out; }
+      return null;
+    }
+    case 'miner': case 'splitter':
+      if (src.buf && accept(g, dst, src.buf, d)) { const k = src.buf; src.buf = null; return k; }
+      return null;
+  }
+  return null;
 }

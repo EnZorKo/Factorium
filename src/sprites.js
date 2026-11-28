@@ -811,6 +811,20 @@ function reactorSprite(lit, f) {
   return c;
 }
 
+// Base del brazo cargador (el brazo se dibuja aparte, animado).
+function inserterBase() {
+  const c = canvas(S, S);
+  const x = c.getContext('2d');
+  x.fillStyle = '#2b2e31'; x.beginPath(); x.roundRect(12, 12, S - 24, S - 24, 8); x.fill();
+  x.fillStyle = '#4a4f55'; x.beginPath(); x.roundRect(15, 15, S - 30, S - 30, 6); x.fill();
+  x.fillStyle = '#c2632a';
+  x.beginPath(); x.moveTo(S - 8, S / 2); x.lineTo(S - 16, S / 2 - 7); x.lineTo(S - 16, S / 2 + 7); x.closePath(); x.fill();
+  x.fillStyle = 'rgba(255,255,255,0.25)';
+  x.beginPath(); x.moveTo(16, S / 2); x.lineTo(8, S / 2 - 5); x.lineTo(8, S / 2 + 5); x.closePath(); x.fill();
+  grime(x, S, S, 181, 0.1);
+  return c;
+}
+
 // Puerto de drones: plataforma de aterrizaje con tolva.
 function portSprite() {
   const W = S * 2;
@@ -990,6 +1004,7 @@ export function buildSprites() {
   sp.press = [0, 1, 2, 3].map((d) => Array.from({ length: 8 }, (_, f) => rotated(pressSprite(f), d)));
   sp.assembler = [0, 1, 2, 3].map((d) => Array.from({ length: 12 }, (_, f) => rotated(assemblerSprite(f), d)));
   sp.port = portSprite();
+  sp.inserter = [0, 1, 2, 3].map((d) => rotated(inserterBase(), d));
   sp.launcher = Array.from({ length: 6 }, (_, k) => launcherSprite(k / 5));
   sp.drone = Array.from({ length: 6 }, (_, f) => droneSprite(f));
   sp.pole = poleSprite();
@@ -1035,6 +1050,7 @@ export function toolIcon(sp, type) {
     case 'genComb': img = sp.fuelgen[0]; break;
     case 'acumulador': img = sp.battery[4]; break;
     case 'puerto': img = sp.port; break;
+    case 'brazo': { x.drawImage(sp.inserter[0], 2, 2, 44, 44); x.strokeStyle = '#e0a23c'; x.lineWidth = 4; x.beginPath(); x.moveTo(24, 24); x.lineTo(8, 12); x.stroke(); return c.toDataURL(); }
     case 'catapulta': img = sp.launcher[3]; break;
     default: img = sp.chest;
   }

@@ -5,8 +5,9 @@ Juego de automatización 2D con vista cenital, para navegador (PC y tablet). Est
 ## Qué hay
 
 - Manejas un dron (WASD en PC, joystick en móvil) que explora el mapa. La niebla oculta lo que no has descubierto.
-- Mapa con biomas, lagos y yacimientos finitos de hierro, cobre, carbón, petróleo y uranio. Los más lejanos son más grandes y ricos.
+- Mapa grande (512×512 casillas) con biomas, lagos y yacimientos finitos de hierro, cobre, carbón, petróleo y uranio. Los más lejanos son más grandes y ricos.
 - 25 objetos con recetas encadenadas: mineral → lingote → placa, varilla, cable y acero → engranaje, bobina, bastidor, actuador, unidad de tracción → plástico, circuito, placa compuesta, núcleo de control, celda nuclear → módulo orbital.
+- Constructor (una entrada, varias recetas), Ensambladora (varias entradas) y Brazo cargador para sacar cosas de cajas y máquinas.
 - Energía por etapas: Baliza (180 kW), vapor con carbón y agua, paneles solares y acumuladores, generador de combustible y reactor nuclear.
 - Logística a distancia: puertos de drones con 6 canales.
 - Estadísticas de producción, consumo y energía (tecla E).
